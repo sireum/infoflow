@@ -16,6 +16,7 @@ target
 /bin/win
 /bin/scala
 /lib
+/logika
 /runtime
 /slang
 /license.txt

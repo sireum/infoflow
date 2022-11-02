@@ -37,7 +37,7 @@ class LogikaInfoFlowTests extends SireumRcSpec {
 
   val logPc: B = F
   val logRawPc: B = F
-  val logVc: B = T
+  val logVc: B = F
   var logVcDirOpt: Option[String] = None()
 
   def check(path: scala.Vector[Predef.String], content: Predef.String): scala.Boolean = {
