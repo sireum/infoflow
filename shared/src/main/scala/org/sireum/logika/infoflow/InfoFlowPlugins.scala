@@ -17,8 +17,8 @@ import org.sireum.logika.plugin.{ClaimPlugin, MethodPlugin, Plugin, StmtPlugin}
 import org.sireum.logika.{Config, Logika, Smt2, State, Util}
 import org.sireum.message.Position
 
-object InfoFlowMethodPlugin {
-
+object InfoFlowPlugins {
+  val defaultPlugins: ISZ[Plugin] = ISZ(InfoFlowMethodPlugin(), InfoFlowInlineAgreeStmtPlugin(), InfoFlowLoopStmtPlugin(), InfoFlowClaimPlugin())
 }
 
 @datatype class InfoFlowMethodPlugin extends MethodPlugin {
@@ -34,7 +34,7 @@ object InfoFlowMethodPlugin {
     }
   }
 
-  def handle(th: TypeHierarchy,
+  @pure def handle(th: TypeHierarchy,
              plugins: ISZ[Plugin],
              method: AST.Stmt.Method,
              caseIndex: Z,
@@ -139,7 +139,7 @@ object InfoFlowMethodPlugin {
       hasInlineAgreementPartitions(stmt)
   }
 
-  def handle(logika: Logika,
+  @pure def handle(logika: Logika,
              smt2: Smt2,
              cache: Smt2.Cache,
              state: State,
@@ -189,7 +189,7 @@ object InfoFlowLoopStmtPlugin {
 
 @datatype class InfoFlowLoopStmtPlugin extends StmtPlugin {
   @pure def name: String = {
-    return "Info Flow Loop Stmt Plugin"
+    return "Info Flow Loop Statement Plugin"
   }
 
   @pure def canHandle(logika: Logika, stmt: Stmt): B = {
@@ -238,7 +238,6 @@ object InfoFlowLoopStmtPlugin {
 
         var r = ISZ[State]()
 
-        val methodInfoFlows: InfoFlowsType = InfoFlowContext.getInfoFlows(logika.context.storage).get
         val methodInAgreements = InfoFlowContext.getInAgreements(logika.context.storage).get
 
         val flowInvariant: InfoFlowInvariant = InfoFlowLoopStmtPlugin.getFlowLoopInvariant(whileStmt.invariants).get
@@ -407,7 +406,7 @@ object InfoFlowLoopStmtPlugin {
     }
   }
 
-  override def handleSymRewrite(rw: Util.SymAddRewriter, data: Claim.Data): MOption[Claim.Data] = {
+  @pure def handleSymRewrite(rw: Util.SymAddRewriter, data: Claim.Data): MOption[Claim.Data] = {
     data match {
       case i: InfoFlowContext.InfoFlowAgreeSym => return MSome(i(sym = rw.transformStateValueSym(i.sym).get))
       case _ => halt("Infeasible")
