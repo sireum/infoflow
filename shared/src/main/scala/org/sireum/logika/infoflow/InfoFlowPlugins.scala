@@ -4,7 +4,7 @@ package org.sireum.logika.infoflow
 import org.sireum._
 import org.sireum.lang.ast.Exp.InfoFlowInvariant
 import org.sireum.lang.ast.MethodContract.InfoFlow
-import org.sireum.lang.ast.{Exp, Stmt}
+import org.sireum.lang.ast.{Exp, Stmt, Transformer}
 import org.sireum.lang.symbol.TypeInfo
 import org.sireum.lang.tipe.TypeHierarchy
 import org.sireum.lang.{ast => AST}
@@ -35,13 +35,13 @@ object InfoFlowPlugins {
   }
 
   @pure def handle(th: TypeHierarchy,
-             plugins: ISZ[Plugin],
-             method: AST.Stmt.Method,
-             caseIndex: Z,
-             config: Config,
-             smt2: Smt2,
-             cache: Smt2.Cache,
-             reporter: Reporter): B = {
+                   plugins: ISZ[Plugin],
+                   method: AST.Stmt.Method,
+                   caseIndex: Z,
+                   config: Config,
+                   smt2: Smt2,
+                   cache: Smt2.Cache,
+                   reporter: Reporter): B = {
 
     val mconfig: Config = if (caseIndex >= 0) config(checkInfeasiblePatternMatch = F) else config
 
@@ -109,63 +109,67 @@ object InfoFlowPlugins {
   }
 }
 
+object InfoFlowInlineAgreeStmtPlugin {
+  @datatype class InlineCheck() extends Transformer.PrePost[B] {
+    override def preExpInlineAgree(ctx: B, o: AST.Exp.InlineAgree): Transformer.PreResult[B, Exp] = {
+      return Transformer.PreResult(T, F, None())
+    }
+  }
+}
+
 @datatype class InfoFlowInlineAgreeStmtPlugin extends StmtPlugin {
 
   @pure def name: String = {
     return "Info Flow Inline Agreement Statement Plugin"
   }
 
-  def hasInlineAgreementPartitions(stmt: AST.Stmt): B = {
-    return getInlineAgreementPartitions(stmt).nonEmpty
-  }
-
-  def getInlineAgreementPartitions(stmt: AST.Stmt): Option[ISZ[InfoFlowContext.Partition]] = {
-    var ret = ISZ[InfoFlowContext.Partition]()
-    stmt match {
-      case AST.Stmt.DeduceSequent(just, sequents) if sequents.size == 1 =>
-        sequents(0).conclusion match {
-          case e: AST.Exp.InlineAgree =>
-            return Some(e.partitions.map((m: AST.Exp.LitString) => ((m.value, m.posOpt))))
-          case _ =>
-        }
-      case _ =>
-    }
-    return None()
-  }
-
   @pure def canHandle(logika: Logika, stmt: AST.Stmt): B = {
+
     return InfoFlowContext.getInfoFlows(logika.context.storage).nonEmpty &&
       InfoFlowContext.getInAgreements(logika.context.storage).nonEmpty &&
-      hasInlineAgreementPartitions(stmt)
+      stmt.isInstanceOf[AST.Stmt.DeduceSequent] &&
+      Transformer(InfoFlowInlineAgreeStmtPlugin.InlineCheck()).transformStmt(F, stmt).ctx
   }
 
   @pure def handle(logika: Logika,
-             smt2: Smt2,
-             cache: Smt2.Cache,
-             state: State,
-             stmt: AST.Stmt,
-             reporter: Reporter): ISZ[State] = {
+                   smt2: Smt2,
+                   cache: Smt2.Cache,
+                   state: State,
+                   stmt: AST.Stmt,
+                   reporter: Reporter): ISZ[State] = {
     val infoFlows = InfoFlowContext.getInfoFlows(logika.context.storage).get
     val inAgrees = InfoFlowContext.getInAgreements(logika.context.storage).get
-    var inlinePartitions = getInlineAgreementPartitions(stmt).get
 
-    if (inlinePartitions.isEmpty) {
-      val deducePos = stmt.posOpt
-      inlinePartitions = infoFlows.values.map((m: InfoFlow) => ((m.label.value, deducePos)))
+    var states: ISZ[State] = ISZ(state)
+    stmt match {
+      case AST.Stmt.DeduceSequent(None(), sequents) =>
+        for (sequent <- sequents) {
+            sequent match {
+              case AST.Sequent(ISZ(), e: AST.Exp.InlineAgree, ISZ()) =>
+                val inlinePartitions = e.partitions.map((m: AST.Exp.LitString) => ((m.value, m.posOpt)))
+
+                for (p <- inlinePartitions if !infoFlows.contains(p._1)) {
+                  reporter.error(p._2, name, s"'$p' is not a valid partition")
+                }
+
+                if (!reporter.hasError) {
+                  states = InfoFlowUtil.checkInfoFlowAgreements(infoFlows, inAgrees, inlinePartitions,"Inline Flow Agreement: ",
+                    logika, smt2, cache, reporter, states)
+                }
+              case AST.Sequent(_, _: AST.Exp.InlineAgree, _) =>
+                reporter.error(stmt.posOpt, name, "Sequents containing inline agreements cannot contain premises or steps")
+              case _ =>
+                reporter.error(stmt.posOpt, name, "Inline agreements must appear as the conclusion of a sequent and cannot be combined with functional contracts")
+            }
+        }
+      case AST.Stmt.DeduceSequent(Some(_), _) =>
+        reporter.error(stmt.posOpt, name, "Justifications disallowed for deduce statements with inline agreements")
+      case _ =>
+        halt("Infeasible")
     }
-
-    var states: ISZ[State] = ISZ()
-    for (p <- inlinePartitions if !infoFlows.contains(p._1)) {
-      reporter.error(p._2, "Inflow", s"'$p' is not a valid partition")
-      states = states :+ state(status = F)
+    if(reporter.hasError) {
+      states = states.map((s: State) => s(status = F))
     }
-
-    if (!reporter.hasError) {
-      states = InfoFlowUtil.checkInfoFlowAgreements(infoFlows, inAgrees, inlinePartitions,
-        "Inline Flow: ",
-        logika, smt2, cache, reporter, ISZ(state))
-    }
-
     return states
   }
 }
