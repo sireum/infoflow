@@ -10,7 +10,7 @@ def control_dependence_leak(): Unit = {
   Contract(
     Modifies(b_out),
     InfoFlows(
-      Flow("b_indOf_a",
+      FlowCase("b_indOf_a",
         InAgree(b_in),
         OutAgree(b_out)))
   )

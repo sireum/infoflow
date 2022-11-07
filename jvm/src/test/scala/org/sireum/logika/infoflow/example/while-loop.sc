@@ -12,7 +12,7 @@ def while_loop(): Unit = {
     Requires((a_in > 0)),
     Modifies(a_out, b_out),
     InfoFlows(
-      Flow("a",
+      FlowCase("a",
         InAgree(a_in),
         OutAgree(a_out)
         /* Two Steps:
@@ -21,7 +21,7 @@ def while_loop(): Unit = {
          *      agreement and show/prove we have agreement on the a_out's
          */
       ),
-      Flow("b",
+      FlowCase("b",
         InAgree(b_in),
         OutAgree(b_out))
     )
@@ -37,7 +37,7 @@ def while_loop(): Unit = {
       Modifies(a_acc, b_acc, i),
       i >= 0,
       InfoFlowInvariant(
-         Flow("a",
+         FlowCase("a",
            InAgree(a_acc, a_in),
            OutAgree(a_acc)
            /* Three Steps:
@@ -48,7 +48,7 @@ def while_loop(): Unit = {
             *   3) loop exit: add a_acc to 'a' channel's InAgree
             */
          ),
-         Flow("b",
+         FlowCase("b",
            InAgree(b_acc, b_in),
            OutAgree(b_acc)
          )

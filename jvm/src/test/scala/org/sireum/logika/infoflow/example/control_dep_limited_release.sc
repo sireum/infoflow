@@ -9,7 +9,7 @@ def control_dependence_limited_release(): Unit = {
   Contract(
     Modifies(acc),
     InfoFlows(
-      Flow("limited release",
+      FlowCase("limited release",
         InAgree(in == pin),
         OutAgree(acc)))
   )

@@ -12,11 +12,11 @@ def while_loop(): Unit = {
     Requires((a_in > 0)),
     Modifies(a_out, b_out),
     InfoFlows(
-      Flow("a",
+      FlowCase("a",
         InAgree(a_in),
         OutAgree(a_out)
       ),
-      Flow("b",
+      FlowCase("b",
         InAgree(b_in),
         OutAgree(b_out))
     )

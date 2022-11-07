@@ -16,7 +16,7 @@ def if_while(): Unit = {
   Contract(
     Modifies(result),
     InfoFlows(
-      Flow("num",
+      FlowCase("num",
         InAgree(num, s),
         OutAgree(result)
       )
@@ -31,7 +31,7 @@ def if_while(): Unit = {
       Invariant(
         Modifies(num_accMult, counter),
         InfoFlowInvariant(
-          Flow("num",
+          FlowCase("num",
             InAgree(num_accMult, num),
             OutAgree(num_accMult)
           )
@@ -51,7 +51,7 @@ def if_while(): Unit = {
       Invariant(
         Modifies(num_accDiv, counter),
         InfoFlowInvariant(
-          Flow("num",
+          FlowCase("num",
             InAgree(num_accDiv, num),
             OutAgree(num_accDiv)
           )

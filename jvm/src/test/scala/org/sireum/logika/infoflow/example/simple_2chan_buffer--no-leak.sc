@@ -11,10 +11,10 @@ def simple_2chan_buffer__no_leak(): Unit = {
   Contract(
     Modifies(a_out, b_out),
     InfoFlows(
-      Flow("a_indOf_b",
+      FlowCase("a_indOf_b",
         InAgree(a_in),
         OutAgree(a_out)),
-      Flow("b_indOf_a",
+      FlowCase("b_indOf_a",
         InAgree(b_in),
         OutAgree(b_out)))
   )
