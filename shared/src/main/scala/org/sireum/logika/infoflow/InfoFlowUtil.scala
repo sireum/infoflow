@@ -6,7 +6,7 @@ import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
 import org.sireum.logika.State.Claim.Let
-import org.sireum.logika.infoflow.InfoFlowContext.{InAgreementsType, InfoFlowsType, Partition}
+import org.sireum.logika.infoflow.InfoFlowContext.{FlowContext, FlowContextType, InfoFlowsType, Partition}
 import org.sireum.logika.{Logika, Smt2, Smt2Query, State, StateTransformer, Util}
 
 object InfoFlowUtil {
@@ -31,54 +31,70 @@ object InfoFlowUtil {
     }
   }
 
-  def processInfoFlowInAgrees(infoFlows: InfoFlowsType,
-                              logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, state: State): (State, InAgreementsType) = {
-    var s = state
-    var syms: InAgreementsType = HashSMap.empty
-    for (infoFlow <- infoFlows.values if s.status) {
-      var ssyms: ISZ[State.Value.Sym] = ISZ()
-      for (inExp <- infoFlow.inAgrees) {
-        inExp match {
-          case ref: AST.Exp.Ref =>
-            val res = ref.resOpt.get
-            res match {
-              case lv: AST.ResolvedInfo.LocalVar =>
-                val (s1, r) = Util.idIntro(ref.posOpt.get, s, lv.context, s"${lv.id}", ref.typedOpt.get, None())
-                s = s1
-                ssyms = ssyms :+ r
-              case x => halt(s"Need to handle $x")
-            }
-          case x =>
-            val split = Split.Disabled
-            val rtCheck = F
-            val (s1, r) = logika.singleStateValue(logika.evalExp(split, smt2, cache, rtCheck, state, inExp, reporter))
-            s = s1
-            r match {
-              case sym: State.Value.Sym => ssyms = ssyms :+ sym
-              case _ => halt(s"Unexpected value: $r")
-            }
+  def intro(exp: AST.Exp, state: State,
+            logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): (State, State.Value.Sym) = {
+    exp match {
+      case ref: AST.Exp.Ref =>
+        val res = ref.resOpt.get
+        res match {
+          case lv: AST.ResolvedInfo.LocalVar =>
+            return Util.idIntro(ref.posOpt.get, state, lv.context, s"${lv.id}", ref.typedOpt.get, None())
+          case x => halt(s"Need to handle $x")
         }
+      case x =>
+        val split = Split.Disabled
+        val rtCheck = F
+        val (s1, r) = logika.singleStateValue(logika.evalExp(split, smt2, cache, rtCheck, state, exp, reporter))
+        r match {
+          case sym: State.Value.Sym =>
+            return (s1, sym)
+          case _ => halt(s"Unexpected value: $r")
+        }
+    }
+  }
+
+
+  def processInfoFlowInAgrees(infoFlows: InfoFlowsType,
+                              logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, state: State): (State, FlowContextType) = {
+    var s = state
+    var flowContexts: FlowContextType = HashSMap.empty
+
+    for (infoFlow <- infoFlows.values if s.status) {
+      var reqSyms: ISZ[State.Value.Sym] = ISZ()
+      for (req <- infoFlow.requires) {
+        val (s1, r) = intro(req, s, logika, smt2, cache, reporter)
+        s = s1
+        reqSyms = reqSyms :+ r
       }
-      if (ssyms.nonEmpty) {
-        syms = syms + (infoFlow.label.value ~> ssyms)
+
+      var inSyms: ISZ[State.Value.Sym] = ISZ()
+      for (inExp <- infoFlow.inAgrees) {
+        val (s1, r) = intro(inExp, s, logika, smt2, cache, reporter)
+        s = s1
+        inSyms = inSyms :+ r
+      }
+
+      if (reqSyms.nonEmpty || inSyms.nonEmpty) {
+        flowContexts = flowContexts + (infoFlow.label.value ~> FlowContext(reqSyms, inSyms))
       }
     }
-    return (s, syms)
+    return (s, flowContexts)
   }
 
   def checkInfoFlowAgreements(infoFlows: InfoFlowsType,
-                              inAgreeSyms: InAgreementsType,
+                              flowContexts: FlowContextType,
                               channelsToCheck: ISZ[Partition],
                               title: String,
                               logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, states: ISZ[State]): ISZ[State] = {
 
-    if (inAgreeSyms.nonEmpty) {
+    if (flowContexts.nonEmpty) {
       //assert(infoFlows.size == inAgreeSyms.size, s"${infoFlows.size} vs ${inAgreeSyms.size}")
 
       var r: ISZ[State] = ISZ()
       for (channel <- channelsToCheck) {
         val infoFlow = infoFlows.get(channel._1).get
-        val inSyms: ISZ[State.Value.Sym] = inAgreeSyms.get(infoFlow.label.value).get
+        val flowContext = flowContexts.get(infoFlow.label.value).get
+
         val outAgrees = infoFlow.outAgrees
         val label = infoFlow.label
         val pos = channel._2.get // TODO: possible this is empty
@@ -91,35 +107,20 @@ object InfoFlowUtil {
 
             val origNextFresh = s.nextFresh
 
-            val inAgreementsFromClaims: ISZ[State.Value.Sym] =
+            val inAgreementsFromClaims: FlowContext =
               InfoFlowContext.getClaimAgreementSyms(s).get(channel._1) match {
-                case Some(claimSyms) => claimSyms
-                case _ => ISZ()
+                case Some(claimSyms) =>
+                  assert(claimSyms.requirementSyms.isEmpty && claimSyms.inAgreementSyms.nonEmpty)
+                  claimSyms
+                case _ => FlowContext(ISZ(), ISZ())
               }
 
             // introduce sym value for the outAgrees
             var outSyms: ISZ[State.Value.Sym] = ISZ()
             for (outExp <- outAgrees) {
-              outExp match {
-                case ref: AST.Exp.Ref =>
-                  val res = ref.resOpt.get
-                  res match {
-                    case lv: AST.ResolvedInfo.LocalVar =>
-                      val (s1, r) = Util.idIntro(ref.posOpt.get, s, lv.context, s"${lv.id}", ref.typedOpt.get, None())
-                      s = s1
-                      outSyms = outSyms :+ r
-                    case x => halt(s"Need to handle $x")
-                  }
-                case x =>
-                  val split = Split.Disabled
-                  val rtCheck = F
-                  val (s1, r) = logika.singleStateValue(logika.evalExp(split, smt2, cache, rtCheck, state, outExp, reporter))
-                  s = s1
-                  r match {
-                    case sym: State.Value.Sym => outSyms = outSyms :+ sym
-                    case _ => halt(s"Unexpected value: $r")
-                  }
-              }
+              val (s1, r) = intro(outExp, s, logika, smt2, cache, reporter)
+              s = s1
+              outSyms = outSyms :+ r
             }
 
             // create 2nd trace
@@ -131,8 +132,16 @@ object InfoFlowUtil {
               s = s(claims = s.claims ++ secondTraceClaims, nextFresh = result.ctx + 1)
             }
 
+            // add requirement claims
+            for (reqSym <- flowContext.requirementSyms) {
+              val secInSym = reqSym(num = reqSym.num + origNextFresh)
+              // assert both expressions eval to T in their respective traces
+              s = s.addClaim(State.Claim.Prop(T, reqSym))
+              s = s.addClaim(State.Claim.Prop(T, secInSym))
+            }
+
             // add in agreements claims
-            for (inSym <- inSyms ++ inAgreementsFromClaims) {
+            for (inSym <- flowContext.inAgreementSyms ++ inAgreementsFromClaims.inAgreementSyms) {
               val secInSym = inSym(num = inSym.num + origNextFresh)
               s = s.addClaim(State.Claim.Eq(inSym, secInSym))
             }
