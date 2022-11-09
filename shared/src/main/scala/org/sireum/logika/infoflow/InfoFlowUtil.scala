@@ -13,10 +13,10 @@ object InfoFlowUtil {
 
   val secondTraceSuffix: String = "~"
 
-  @datatype class SymValueRewriter(val fresh: Z) extends StateTransformer.PrePost[Z] {
+  @datatype class SymValueRewriter(val lastSymNum: Z) extends StateTransformer.PrePost[Z] {
     override def preStateValueSym(maxSym: Z,
                                   o: State.Value.Sym): StateTransformer.PreResult[Z, State.Value] = {
-      val r = o.num + fresh
+      val r = o.num + lastSymNum
       val _maxSym: Z = if (r > maxSym) r else maxSym
 
       return StateTransformer.PreResult(_maxSym, T, Some(o(num = r)))
@@ -103,8 +103,6 @@ object InfoFlowUtil {
           } else {
             var s = state
 
-            val origNextFresh = s.nextFresh
-
             val inAgreementsFromClaims: FlowContext =
               InfoFlowContext.getClaimAgreementSyms(s).get(channel) match {
                 case Some(claimSyms) =>
@@ -121,10 +119,12 @@ object InfoFlowUtil {
               outSyms = outSyms :+ r
             }
 
+            val lastSymNum = s.nextFresh - 1
+
             // create 2nd trace
             {
-              val rewriter = StateTransformer[Z](SymValueRewriter(origNextFresh))
-              val result = rewriter.transformState(origNextFresh, s)
+              val rewriter = StateTransformer[Z](SymValueRewriter(lastSymNum))
+              val result = rewriter.transformState(lastSymNum, s)
 
               val secondTraceClaims = result.resultOpt.get.claims
               s = s(claims = s.claims ++ secondTraceClaims, nextFresh = result.ctx + 1)
@@ -132,7 +132,7 @@ object InfoFlowUtil {
 
             // add requirement claims
             for (reqSym <- flowContext.requirementSyms) {
-              val secInSym = reqSym(num = reqSym.num + origNextFresh)
+              val secInSym = reqSym(num = reqSym.num + lastSymNum)
               // assert both expressions eval to T in their respective traces
               s = s.addClaim(State.Claim.Prop(T, reqSym))
               s = s.addClaim(State.Claim.Prop(T, secInSym))
@@ -140,7 +140,7 @@ object InfoFlowUtil {
 
             // add in agreements claims
             for (inSym <- flowContext.inAgreementSyms ++ inAgreementsFromClaims.inAgreementSyms) {
-              val secInSym = inSym(num = inSym.num + origNextFresh)
+              val secInSym = inSym(num = inSym.num + lastSymNum)
               s = s.addClaim(State.Claim.Eq(inSym, secInSym))
             }
 
@@ -151,7 +151,7 @@ object InfoFlowUtil {
               s = s1
               bstack = bstack.push(sym)
 
-              val secOutSym = outSym(num = outSym.num + origNextFresh)
+              val secOutSym = outSym(num = outSym.num + lastSymNum)
               val claim = State.Claim.Let.Binary(sym, outSym, AST.Exp.BinaryOp.Eq, secOutSym, secOutSym.tipe)
               s = s.addClaim(claim)
             }
