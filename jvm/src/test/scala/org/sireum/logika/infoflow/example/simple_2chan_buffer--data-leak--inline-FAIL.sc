@@ -22,6 +22,7 @@ def simple_2chan_buffer__inline_leak(): Unit = {
   b_out = a_in // b_in << leak here
   Deduce( |- ( InlineAgree("b") ))
   b_out = b_in // << override/mask the leak
-  Deduce( |- ( InlineAgree() ))
+  Deduce( |- ( InlineAgree("a") ),
+          |- ( InlineAgree("b") ))
   assert(T)
 }

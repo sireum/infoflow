@@ -24,38 +24,21 @@ def guardOneStep(): Unit = {
     //       The other direction is symmetric.
     InfoFlows(
       FlowCase("in0_to_out1 unconditional",
-        // "unconditional" flow specification
-        //  This unconditional flow spec is imprecise in the sense that it indicates
-        //  that out1_data moy depend on information from in0_data or out1_data.
-        //  In reality, the source of information for out1_data varies based on certain conditions
-        //    - if the ready "protocol" is met, it gets its data from in1
-        //    - if the ready "protocol" is not met, it gets its data from out1
-        //      (it maintains is value)
-        //  The desire for more precise specification motivates "conditional information flow contracts"
-        //  as presented in the referenced paper above
         InAgree(in0_data, out1_data, in0_ready, out1_ready),
         OutAgree(out1_data)),
-      // The above uncondition specification may be replaced (or refined)
-      //  to the conditional cases below.  Note that when conditional flow cases are
-      //  are used, we probably want the ability to specify that the conditions in the cases
-      //  are exhaustive.
       FlowCase("in0_to_out1_data_moves",
-        // "conditional" flow specification
         Requires(in0_ready & !out1_ready),
         InAgree(in0_data, in0_ready, out1_ready),
         OutAgree(out1_data)),
       FlowCase("in0_to_out1_data_blocked",
-        // "conditional" flow specification
         Requires(!in0_ready | out1_ready),
         InAgree(out1_data, in0_ready, out1_ready),
         OutAgree(out1_data)),
-      //      FlowCase("in0_to_out1 data block",
-      //        InAgree(out1_data),
-      //        OutAgree(out1_data))
     )
   )
   var data0: C = ' ';
   var data1: C = ' ';
+  out1_data = data0
 
   // move from in0 to out1 if data in in0 is fresh and data in out1 is stale (already by read by client)
   if (in0_ready & !out1_ready) {

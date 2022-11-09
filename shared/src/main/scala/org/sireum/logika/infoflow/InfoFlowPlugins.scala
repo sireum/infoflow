@@ -12,7 +12,7 @@ import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
 import org.sireum.logika.State.Claim.Let
 import org.sireum.logika.Util.{checkMethodPost, checkMethodPre, logikaMethod, updateInVarMaps}
-import org.sireum.logika.infoflow.InfoFlowContext.{InfoFlowAgreeSym, InfoFlowsType, Partition}
+import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, InfoFlowAgreeSym, InfoFlowsType}
 import org.sireum.logika.plugin.{ClaimPlugin, MethodPlugin, Plugin, StmtPlugin}
 import org.sireum.logika.{Config, Logika, Smt2, State, Util}
 import org.sireum.message.Position
@@ -73,7 +73,18 @@ object InfoFlowPlugins {
       val invs = logika.retrieveInvs(res.owner, res.isInObject)
       state = checkMethodPre(logika, smt2, cache, reporter, state, methodPosOpt, invs, requires)
 
-      val infoFlows: InfoFlowsType = HashSMap.empty[String, InfoFlow] ++ infoFlowsNode.map((m: InfoFlow) => ((m.label.value, m)))
+      var infoFlows: InfoFlowsType = HashSMap.empty[String, InfoFlow]
+      for(infoFlow <- infoFlowsNode) {
+        if(infoFlows.contains(infoFlow.label.value)) {
+          reporter.error(infoFlow.label.posOpt, name, "Flow case channels must be unique")
+        }
+        infoFlows = infoFlows + infoFlow.label.value ~> infoFlow
+      }
+
+      if(reporter.hasError) {
+        return
+      }
+
       val stateSyms = InfoFlowUtil.processInfoFlowInAgrees(infoFlows, logika, smt2, cache, reporter, state)
       state = stateSyms._1
 
@@ -89,8 +100,8 @@ object InfoFlowPlugins {
 
       val augInAgrees = InfoFlowContext.getInAgreements(logika.context.storage).get
 
-      val channelsToCheck: ISZ[Partition] = infoFlows.values.map((m: InfoFlow) => ((m.label.value, m.label.posOpt)))
-      val ss2: ISZ[State] = InfoFlowUtil.checkInfoFlowAgreements(infoFlows, augInAgrees, channelsToCheck,
+      val flowChecks: ISZ[FlowCheckType] = infoFlows.values.map((m: InfoFlow) => ((m.label.value, m.label.posOpt, m.outAgrees)))
+      val ss2: ISZ[State] = InfoFlowUtil.checkInfoFlowAgreements(infoFlows, augInAgrees, flowChecks,
         "Post Flow: ",
         logika, smt2, cache, reporter, ss)
 
@@ -146,16 +157,16 @@ object InfoFlowInlineAgreeStmtPlugin {
         for (sequent <- sequents) {
             sequent match {
               case AST.Sequent(ISZ(), e: AST.Exp.InlineAgree, ISZ()) =>
-                val inlinePartitions = e.partitions.map((m: AST.Exp.LitString) => ((m.value, m.posOpt)))
-
-                for (p <- inlinePartitions if !infoFlows.contains(p._1)) {
-                  reporter.error(p._2, name, s"'$p' is not a valid partition")
+                infoFlows.get(e.channel.value) match {
+                  case Some(infoFlow) =>
+                    val outAgrees: ISZ[Exp] = if (e.outAgrees.nonEmpty) e.outAgrees else infoFlow.outAgrees
+                    states = InfoFlowUtil.checkInfoFlowAgreements(
+                      infoFlows, inAgrees, ISZ((e.channel.value, e.channel.posOpt, outAgrees)),
+                      "Inline Flow Agreement: ", logika, smt2, cache, reporter, states)
+                  case _ =>
+                    reporter.error(e.channel.posOpt, name, s"'${e.channel.value}' is not an existing channel")
                 }
 
-                if (!reporter.hasError) {
-                  states = InfoFlowUtil.checkInfoFlowAgreements(infoFlows, inAgrees, inlinePartitions,"Inline Flow Agreement: ",
-                    logika, smt2, cache, reporter, states)
-                }
               case AST.Sequent(_, _: AST.Exp.InlineAgree, _) =>
                 reporter.error(stmt.posOpt, name, "Sequents containing inline agreements cannot contain premises or steps")
               case _ =>
@@ -244,7 +255,16 @@ object InfoFlowLoopStmtPlugin {
 
             val invariantFlows: InfoFlowsType = HashSMap.empty[String, InfoFlow] ++ flowInvariant.flowInvariants.map((m: InfoFlow) => ((m.label.value, m)))
 
-            val loopPartitionsToCheck: ISZ[Partition] = invariantFlows.values.map((m: InfoFlow) => ((m.label.value, m.label.posOpt)))
+            val loopPartitionsToCheck: ISZ[FlowCheckType] = invariantFlows.values.map((m: InfoFlow) => {
+              if(!methodInAgreements.contains(m.label.value)) {
+                reporter.error(m.label.posOpt, name, s"'${m.label.value}' is not an existing channel'")
+              }
+              ((m.label.value, m.label.posOpt, m.outAgrees))
+            })
+
+            if (reporter.hasError) {
+              return r :+ s0(status = F)
+            }
 
             val nonFlowInvariants = whileStmt.invariants.filter((e: Exp) => !e.isInstanceOf[InfoFlowInvariant])
 

@@ -6,7 +6,7 @@ import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
 import org.sireum.logika.State.Claim.Let
-import org.sireum.logika.infoflow.InfoFlowContext.{FlowContext, FlowContextType, InfoFlowsType, Partition}
+import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, FlowContext, FlowContextType, InfoFlowsType}
 import org.sireum.logika.{Logika, Smt2, Smt2Query, State, StateTransformer, Util}
 
 object InfoFlowUtil {
@@ -83,7 +83,7 @@ object InfoFlowUtil {
 
   def checkInfoFlowAgreements(infoFlows: InfoFlowsType,
                               flowContexts: FlowContextType,
-                              channelsToCheck: ISZ[Partition],
+                              flowChecks: ISZ[FlowCheckType],
                               title: String,
                               logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, states: ISZ[State]): ISZ[State] = {
 
@@ -91,13 +91,11 @@ object InfoFlowUtil {
       //assert(infoFlows.size == inAgreeSyms.size, s"${infoFlows.size} vs ${inAgreeSyms.size}")
 
       var r: ISZ[State] = ISZ()
-      for (channel <- channelsToCheck) {
-        val infoFlow = infoFlows.get(channel._1).get
-        val flowContext = flowContexts.get(infoFlow.label.value).get
-
-        val outAgrees = infoFlow.outAgrees
-        val label = infoFlow.label
-        val pos = channel._2.get // TODO: possible this is empty
+      for (flowCheck <- flowChecks) {
+        val channel = flowCheck._1
+        val flowContext = flowContexts.get(channel).get
+        val outAgrees = flowCheck._3
+        val pos = flowCheck._2.get // TODO: possible this is empty
 
         for (state <- states) {
           if (!state.status) {
@@ -108,7 +106,7 @@ object InfoFlowUtil {
             val origNextFresh = s.nextFresh
 
             val inAgreementsFromClaims: FlowContext =
-              InfoFlowContext.getClaimAgreementSyms(s).get(channel._1) match {
+              InfoFlowContext.getClaimAgreementSyms(s).get(channel) match {
                 case Some(claimSyms) =>
                   assert(claimSyms.requirementSyms.isEmpty && claimSyms.inAgreementSyms.nonEmpty)
                   claimSyms
@@ -173,16 +171,16 @@ object InfoFlowUtil {
             val conclusion = State.Claim.Prop(T, sym)
 
             val validity = smt2.valid(cache = cache, reportQuery = T, log = logika.config.logVc, logDirOpt = logika.config.logVcDirOpt,
-              title = s"${title}Flow case $label at [${pos.beginLine}, ${pos.endLine}]", pos = pos,
+              title = s"${title}Flow case $channel at [${pos.beginLine}, ${pos.endLine}]", pos = pos,
               premises = s.claims, conclusion = conclusion, reporter = reporter)
 
             var ok = F
             validity.kind match {
               case Smt2Query.Result.Kind.Unsat => ok = T
-              case Smt2Query.Result.Kind.Sat => logika.error(Some(pos), s"${title}Flow case $label violation", reporter)
-              case Smt2Query.Result.Kind.Unknown => logika.error(Some(pos), s"${title}Could not verify flow case $label", reporter)
-              case Smt2Query.Result.Kind.Timeout => logika.error(Some(pos), s"${title}Timed out while checking flow case $label", reporter)
-              case Smt2Query.Result.Kind.Error => logika.error(Some(pos), s"${title}Error encountered when checking $label case $label", reporter)
+              case Smt2Query.Result.Kind.Sat => logika.error(Some(pos), s"${title}Flow case $channel violation", reporter)
+              case Smt2Query.Result.Kind.Unknown => logika.error(Some(pos), s"${title}Could not verify flow case $channel", reporter)
+              case Smt2Query.Result.Kind.Timeout => logika.error(Some(pos), s"${title}Timed out while checking flow case $channel", reporter)
+              case Smt2Query.Result.Kind.Error => logika.error(Some(pos), s"${title}Error encountered when checking flow case $channel", reporter)
             }
 
             r = r :+ state(status = ok)

@@ -3,6 +3,7 @@
 package org.sireum.logika.infoflow
 
 import org.sireum._
+import org.sireum.lang.{ast => AST}
 import org.sireum.lang.ast.MethodContract.InfoFlow
 import org.sireum.lang.ast.Typed
 import org.sireum.logika.State.Claim.Data
@@ -23,7 +24,7 @@ object InfoFlowContext {
 
   type LogikaStore = HashMap[String, Context.Value]
 
-  type Partition = (String, Option[Position])
+  type FlowCheckType = (Channel, Option[Position], ISZ[AST.Exp])
 
   @datatype class InfoFlowAgreeSym(val sym: State.Value.Sym,
                                    val id: String,
