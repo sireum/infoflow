@@ -15,7 +15,6 @@ import org.sireum.logika.Util.{checkMethodPost, checkMethodPre, logikaMethod, up
 import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, InfoFlowAgreeSym, InfoFlowsType}
 import org.sireum.logika.plugin.{ClaimPlugin, MethodPlugin, Plugin, StmtPlugin}
 import org.sireum.logika.{Config, Logika, Smt2, State, Util}
-import org.sireum.message.Position
 
 object InfoFlowPlugins {
   val defaultPlugins: ISZ[Plugin] = ISZ(InfoFlowMethodPlugin(), InfoFlowInlineAgreeStmtPlugin(), InfoFlowLoopStmtPlugin(), InfoFlowClaimPlugin())
@@ -74,14 +73,14 @@ object InfoFlowPlugins {
       state = checkMethodPre(logika, smt2, cache, reporter, state, methodPosOpt, invs, requires)
 
       var infoFlows: InfoFlowsType = HashSMap.empty[String, InfoFlow]
-      for(infoFlow <- infoFlowsNode) {
-        if(infoFlows.contains(infoFlow.label.value)) {
+      for (infoFlow <- infoFlowsNode) {
+        if (infoFlows.contains(infoFlow.label.value)) {
           reporter.error(infoFlow.label.posOpt, name, "Flow case channels must be unique")
         }
         infoFlows = infoFlows + infoFlow.label.value ~> infoFlow
       }
 
-      if(reporter.hasError) {
+      if (reporter.hasError) {
         return
       }
 
@@ -101,8 +100,7 @@ object InfoFlowPlugins {
       val augInAgrees = InfoFlowContext.getInAgreements(logika.context.storage).get
 
       val flowChecks: ISZ[FlowCheckType] = infoFlows.values.map((m: InfoFlow) => ((m.label.value, m.label.posOpt, m.outAgrees)))
-      val ss2: ISZ[State] = InfoFlowUtil.checkInfoFlowAgreements(infoFlows, augInAgrees, flowChecks,
-        "Post Flow: ",
+      val ss2: ISZ[State] = InfoFlowUtil.checkInfoFlowAgreements(augInAgrees, flowChecks, "Post Flow: ", methodPosOpt.get,
         logika, smt2, cache, reporter, ss)
 
       val ssPost: ISZ[State] = checkMethodPost(logika, smt2, cache, reporter, ss2, methodPosOpt, invs, ensures, mconfig.logPc, mconfig.logRawPc,
@@ -151,37 +149,35 @@ object InfoFlowInlineAgreeStmtPlugin {
     val infoFlows = InfoFlowContext.getInfoFlows(logika.context.storage).get
     val inAgrees = InfoFlowContext.getInAgreements(logika.context.storage).get
 
-    var states: ISZ[State] = ISZ(state)
     stmt match {
       case AST.Stmt.DeduceSequent(None(), sequents) =>
         for (sequent <- sequents) {
-            sequent match {
-              case AST.Sequent(ISZ(), e: AST.Exp.InlineAgree, ISZ()) =>
-                infoFlows.get(e.channel.value) match {
-                  case Some(infoFlow) =>
-                    val outAgrees: ISZ[Exp] = if (e.outAgrees.nonEmpty) e.outAgrees else infoFlow.outAgrees
-                    states = InfoFlowUtil.checkInfoFlowAgreements(
-                      infoFlows, inAgrees, ISZ((e.channel.value, e.channel.posOpt, outAgrees)),
-                      "Inline Flow Agreement: ", logika, smt2, cache, reporter, states)
-                  case _ =>
-                    reporter.error(e.channel.posOpt, name, s"'${e.channel.value}' is not an existing channel")
-                }
-
-              case AST.Sequent(_, _: AST.Exp.InlineAgree, _) =>
-                reporter.error(stmt.posOpt, name, "Sequents containing inline agreements cannot contain premises or steps")
-              case _ =>
-                reporter.error(stmt.posOpt, name, "Inline agreements must appear as the conclusion of a sequent and cannot be combined with functional contracts")
-            }
+          sequent match {
+            case AST.Sequent(ISZ(), e: AST.Exp.InlineAgree, ISZ()) =>
+              infoFlows.get(e.channel.value) match {
+                case Some(infoFlow) =>
+                  val outAgrees: ISZ[Exp] = if (e.outAgrees.nonEmpty) e.outAgrees else infoFlow.outAgrees
+                  return InfoFlowUtil.checkInfoFlowAgreements(
+                    inAgrees, ISZ((e.channel.value, e.channel.posOpt, outAgrees)), "Inline Flow Agreement: ", stmt.posOpt.get,
+                    logika, smt2, cache, reporter, ISZ(state))
+                case _ =>
+                  reporter.error(e.channel.posOpt, name, s"'${e.channel.value}' is not an existing channel")
+              }
+            case AST.Sequent(_, _: AST.Exp.InlineAgree, _) =>
+              reporter.error(stmt.posOpt, name, "Sequents containing inline agreements cannot contain premises or steps")
+            case _ =>
+              reporter.error(stmt.posOpt, name, "Inline agreements must appear as the conclusion of a sequent and cannot be combined with functional contracts")
+          }
         }
       case AST.Stmt.DeduceSequent(Some(_), _) =>
         reporter.error(stmt.posOpt, name, "Justifications disallowed for deduce statements with inline agreements")
       case _ =>
         halt("Infeasible")
     }
-    if(reporter.hasError) {
-      states = states.map((s: State) => s(status = F))
-    }
-    return states
+
+    assert(reporter.hasError)
+
+    return ISZ(state(status = F))
   }
 }
 
@@ -212,28 +208,13 @@ object InfoFlowLoopStmtPlugin {
     }
   }
 
-  def recordLoopInvariantOutAgrees(state: State, invariantFlows: InfoFlowsType, pos: Option[Position], reporter: Reporter): State = {
+  def recordLoopInvariantOutAgrees(state: State, invariantFlows: InfoFlowsType,
+                                   logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): State = {
     var s = state
-    for (infoFlow <- invariantFlows.values) {
-      val channel = infoFlow.label.value
-      var syms: ISZ[State.Value.Sym] = ISZ()
-      var agreeClaims: ISZ[State.Claim] = ISZ()
-      for (outExp <- infoFlow.outAgrees) {
-        outExp match {
-          case ref: AST.Exp.Ref =>
-            val res = ref.resOpt.get
-            res match {
-              case lv: AST.ResolvedInfo.LocalVar =>
-                val (s1, r) = Util.idIntro(ref.posOpt.get, s, lv.context, s"${lv.id}", ref.typedOpt.get, None())
-                syms = syms :+ r
-                agreeClaims = agreeClaims :+ State.Claim.Custom(InfoFlowAgreeSym(r, lv.id, channel))
-                s = s1
-              case x => halt(s"Need to handle $x")
-            }
-          case x => halt(s"Need to handle : $x")
-        }
-      }
-      s = s(claims = s.claims ++ agreeClaims)
+    for (infoFlow <- invariantFlows.values;
+         outExp <- infoFlow.outAgrees) {
+      val (s1, r) = InfoFlowUtil.intro(outExp, s, logika, smt2, cache, reporter)
+      s = s1.addClaim(State.Claim.Custom(InfoFlowAgreeSym(r, infoFlow.label.value)))
     }
     return s
   }
@@ -256,7 +237,7 @@ object InfoFlowLoopStmtPlugin {
             val invariantFlows: InfoFlowsType = HashSMap.empty[String, InfoFlow] ++ flowInvariant.flowInvariants.map((m: InfoFlow) => ((m.label.value, m)))
 
             val loopPartitionsToCheck: ISZ[FlowCheckType] = invariantFlows.values.map((m: InfoFlow) => {
-              if(!methodInAgreements.contains(m.label.value)) {
+              if (!methodInAgreements.contains(m.label.value)) {
                 reporter.error(m.label.posOpt, name, s"'${m.label.value}' is not an existing channel'")
               }
               ((m.label.value, m.label.posOpt, m.outAgrees))
@@ -272,8 +253,8 @@ object InfoFlowLoopStmtPlugin {
               nonFlowInvariants, reporter)
 
             for (s0w <- InfoFlowUtil.checkInfoFlowAgreements(
-              invariantFlows, methodInAgreements, loopPartitionsToCheck,
-              "Flow Loop Invariant at the beginning of while-loop: ",
+              methodInAgreements, loopPartitionsToCheck,
+              "Flow Loop Invariant at the beginning of while-loop: ", whileStmt.posOpt.get,
               logika, smt2, cache, reporter, postInvStates)) {
 
               if (s0w.status) {
@@ -342,9 +323,8 @@ object InfoFlowLoopStmtPlugin {
                           val postLoopStates = logika.checkExps(split, smt2, cache, F, "Loop invariant", " at the end of while-loop",
                             s5, nonFlowInvariants, reporter)
 
-                          for (s6 <- InfoFlowUtil.checkInfoFlowAgreements(
-                            invariantFlows, flowInAgrees._2, loopPartitionsToCheck,
-                            "Flow Loop Invariant at end of while-loop ",
+                          for (s6 <- InfoFlowUtil.checkInfoFlowAgreements(flowInAgrees._2, loopPartitionsToCheck,
+                            "Flow Loop Invariant at end of while-loop ", stmt.posOpt.get,
                             logika, smt2, cache, reporter, postLoopStates)) {
                             if (nextFresh < s6.nextFresh) {
                               nextFresh = s6.nextFresh
@@ -373,7 +353,7 @@ object InfoFlowLoopStmtPlugin {
                     var state = State(status = elseSat, claims = elseClaims, nextFresh = nextFresh)
 
                     // now capture the current value of each channels' out agreements
-                    state = recordLoopInvariantOutAgrees(state, invariantFlows, whileStmt.posOpt, reporter)
+                    state = recordLoopInvariantOutAgrees(state, invariantFlows, logikax, smt2, cache, reporter)
 
                     r = r :+ state
                   } else {
@@ -389,7 +369,7 @@ object InfoFlowLoopStmtPlugin {
           case invalid =>
             val topLevels = ops.ISZOps(invalid).filter((p: AST.Exp) => p.isInstanceOf[AST.Exp.InfoFlowInvariant])
             val nonTopLevels = ops.ISZOps(invalid).filter((p: AST.Exp) => !p.isInstanceOf[AST.Exp.InfoFlowInvariant])
-            if(nonTopLevels.nonEmpty) {
+            if (nonTopLevels.nonEmpty) {
               reporter.error(nonTopLevels(0).posOpt, name, "Flow loop invariants cannot (currently) be subexpressions")
             } else if (topLevels.size > 1) {
               reporter.error(topLevels(0).posOpt, name, "There (currently) can only be one flow loop invariant per loop, which can contain multiple Flows")

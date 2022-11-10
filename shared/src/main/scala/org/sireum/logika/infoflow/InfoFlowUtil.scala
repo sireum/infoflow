@@ -7,7 +7,8 @@ import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
 import org.sireum.logika.State.Claim.Let
 import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, FlowContext, FlowContextType, InfoFlowsType}
-import org.sireum.logika.{Logika, Smt2, Smt2Query, State, StateTransformer, Util}
+import org.sireum.logika.{Logika, Smt2, Smt2Query, State, StateTransformer}
+import org.sireum.message.Position
 
 object InfoFlowUtil {
 
@@ -33,23 +34,11 @@ object InfoFlowUtil {
 
   def intro(exp: AST.Exp, state: State,
             logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): (State, State.Value.Sym) = {
-    exp match {
-      case ref: AST.Exp.Ref =>
-        val res = ref.resOpt.get
-        res match {
-          case lv: AST.ResolvedInfo.LocalVar =>
-            return Util.idIntro(ref.posOpt.get, state, lv.context, s"${lv.id}", ref.typedOpt.get, None())
-          case x => halt(s"Need to handle $x")
-        }
-      case x =>
-        val split = Split.Disabled
-        val rtCheck = F
-        val (s1, r) = logika.singleStateValue(logika.evalExp(split, smt2, cache, rtCheck, state, exp, reporter))
-        r match {
-          case sym: State.Value.Sym =>
-            return (s1, sym)
-          case _ => halt(s"Unexpected value: $r")
-        }
+    logika.singleStateValue(logika.evalExp(Split.Disabled, smt2, cache, F, state, exp, reporter)) match {
+      case (s, v: State.Value.Sym) => return (s, v)
+      case (s, v) =>
+        val (s1, sym) = s.freshSym(v.tipe, exp.posOpt.get)
+        return (s1.addClaim(State.Claim.Let.Def(sym, v)), sym)
     }
   }
 
@@ -81,21 +70,19 @@ object InfoFlowUtil {
     return (s, flowContexts)
   }
 
-  def checkInfoFlowAgreements(infoFlows: InfoFlowsType,
-                              flowContexts: FlowContextType,
+  def checkInfoFlowAgreements(flowContexts: FlowContextType,
                               flowChecks: ISZ[FlowCheckType],
                               title: String,
+                              altPos: Position,
                               logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, states: ISZ[State]): ISZ[State] = {
 
     if (flowContexts.nonEmpty) {
-      //assert(infoFlows.size == inAgreeSyms.size, s"${infoFlows.size} vs ${inAgreeSyms.size}")
-
       var r: ISZ[State] = ISZ()
       for (flowCheck <- flowChecks) {
         val channel = flowCheck._1
         val flowContext = flowContexts.get(channel).get
         val outAgrees = flowCheck._3
-        val pos = flowCheck._2.get // TODO: possible this is empty
+        val pos: Position = if (flowCheck._2.nonEmpty) flowCheck._2.get else altPos
 
         for (state <- states) {
           if (!state.status) {

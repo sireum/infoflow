@@ -27,7 +27,6 @@ object InfoFlowContext {
   type FlowCheckType = (Channel, Option[Position], ISZ[AST.Exp])
 
   @datatype class InfoFlowAgreeSym(val sym: State.Value.Sym,
-                                   val id: String,
                                    val channel: String) extends Data {
     @pure def toRawST: ST = {
       halt("stub")
