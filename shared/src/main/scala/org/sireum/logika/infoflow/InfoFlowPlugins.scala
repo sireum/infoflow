@@ -14,7 +14,7 @@ import org.sireum.logika.State.Claim.Let
 import org.sireum.logika.Util.{checkMethodPost, checkMethodPre, logikaMethod, updateInVarMaps}
 import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, InfoFlowAgreeSym, InfoFlowsType}
 import org.sireum.logika.plugin.{ClaimPlugin, MethodPlugin, Plugin, StmtPlugin}
-import org.sireum.logika.{Config, Logika, Smt2, State, Util}
+import org.sireum.logika.{Config, Context, Logika, Smt2, State, Util}
 
 object InfoFlowPlugins {
   val defaultPlugins: ISZ[Plugin] = ISZ(InfoFlowMethodPlugin(), InfoFlowInlineAgreeStmtPlugin(), InfoFlowLoopStmtPlugin(), InfoFlowClaimPlugin())
@@ -115,6 +115,15 @@ object InfoFlowPlugins {
     }
 
     return T
+  }
+
+  @strictpure def canHandleCompositional(th: TypeHierarchy, info: Context.InvokeMethodInfo): B = F
+
+  def handleCompositional(logika: Logika, posOpt: Option[message.Position], info: Context.InvokeMethodInfo,
+                          state: State, typeSubstMap: HashMap[String, AST.Typed], retType: AST.Typed,
+                          invokeReceiverOpt: Option[AST.Exp], receiverOpt: Option[State.Value.Sym],
+                          paramArgs: ISZ[(AST.ResolvedInfo.LocalVar, AST.Typed, AST.Exp, State.Value)]): ISZ[(State, State.Value)] = {
+    halt("Infeasible")
   }
 }
 
