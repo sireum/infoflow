@@ -3,9 +3,9 @@
 package org.sireum.logika.infoflow
 
 import org.sireum._
-import org.sireum.lang.{ast => AST}
 import org.sireum.lang.ast.MethodContract.InfoFlow
 import org.sireum.lang.ast.Typed
+import org.sireum.lang.{ast => AST}
 import org.sireum.logika.State.Claim.Data
 import org.sireum.logika.{Context, Logika, State, StateTransformer, Util}
 import org.sireum.message.Position
@@ -15,12 +15,14 @@ object InfoFlowContext {
   type Channel = String
 
   val IN_AGREE_KEY: String = "IN_AGREE_KEY"
-  @datatype class FlowContext(val requirementSyms: ISZ[State.Value.Sym],
-                              val inAgreementSyms: ISZ[State.Value.Sym])
-  type FlowContextType = HashSMap[Channel, FlowContext]
+
+  @datatype class AssumeContext(val requirementSyms: ISZ[State.Value.Sym],
+                                val inAgreementSyms: ISZ[State.Value.Sym])
+
+  type AssumeContextType = HashMap[Channel, AssumeContext]
 
   val INFO_FLOWS_KEY: String = "INFO_FLOWS_KEY"
-  type InfoFlowsType = HashSMap[Channel, InfoFlow]
+  type InfoFlowsType = HashMap[Channel, InfoFlow]
 
   type LogikaStore = HashMap[String, Context.Value]
 
@@ -39,7 +41,7 @@ object InfoFlowContext {
     }
   }
 
-  @datatype class InAgreementValue(val inAgreements: FlowContextType) extends Context.Value
+  @datatype class InAgreementValue(val inAgreements: AssumeContextType) extends Context.Value
 
   @datatype class InfoFlowsValue(val infoFlows: InfoFlowsType) extends Context.Value
 
@@ -59,38 +61,38 @@ object InfoFlowContext {
     }
   }
 
-  def getClaimAgreementSyms(state: State): FlowContextType = {
-    var ret: FlowContextType = HashSMap.empty
+  def getClaimAgreementSyms(state: State): AssumeContextType = {
+    var ret: AssumeContextType = HashMap.empty
     val agreementClaims = StateTransformer[SClaimAgree](InfoFlowContext.CollectAgreementSyms()).transformState(ISZ(), state).ctx
     for (claim <- agreementClaims) {
       val inAgreeSyms: ISZ[State.Value.Sym] =
         if (ret.contains(claim.channel)) ret.get(claim.channel).get.inAgreementSyms
         else ISZ()
-      ret = ret + claim.channel ~> FlowContext(ISZ(), inAgreeSyms :+ claim.sym)
+      ret = ret + claim.channel ~> AssumeContext(ISZ(), inAgreeSyms :+ claim.sym)
     }
     return ret
   }
 
-  def putInAgreementsL(inAgreements: FlowContextType, logika: Logika): Logika = {
+  def putInAgreementsL(inAgreements: AssumeContextType, logika: Logika): Logika = {
     return logika(context = logika.context(storage = putInAgreements(inAgreements, logika.context.storage)))
   }
 
-  def putInAgreements(inAgreements: FlowContextType, store: LogikaStore): LogikaStore = {
+  def putInAgreements(inAgreements: AssumeContextType, store: LogikaStore): LogikaStore = {
     getInAgreements(store) match {
       case Some(existingMap) =>
         var mergedMap = existingMap
         for (entry <- inAgreements.entries if mergedMap.contains(entry._1)) {
           val mergedReqSyms = mergedMap.get(entry._1).get.requirementSyms ++ entry._2.requirementSyms
           val mergedInAgreements = mergedMap.get(entry._1).get.inAgreementSyms ++ entry._2.inAgreementSyms
-          mergedMap = mergedMap + entry._1 ~> FlowContext(mergedReqSyms, mergedInAgreements)
+          mergedMap = mergedMap + entry._1 ~> AssumeContext(mergedReqSyms, mergedInAgreements)
         }
         return store + IN_AGREE_KEY ~> InAgreementValue(mergedMap)
       case _ => return store + IN_AGREE_KEY ~> InAgreementValue(inAgreements)
     }
   }
 
-  def getInAgreements(store: LogikaStore): Option[FlowContextType] = {
-    val ret: Option[FlowContextType] = store.get(IN_AGREE_KEY) match {
+  def getInAgreements(store: LogikaStore): Option[AssumeContextType] = {
+    val ret: Option[AssumeContextType] = store.get(IN_AGREE_KEY) match {
       case Some(InAgreementValue(v)) => return Some(v)
       case _ => return None()
     }

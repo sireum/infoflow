@@ -88,7 +88,7 @@ def serviceOneStep(): Unit = {
   )
   // ..would like the ability to mention specific variables/expressions in inline agreements
 
-  Deduce(|- ( InlineAgree("unconditional_case", OutAgree(current_domain))),
+  Deduce(|- ( AssertAgree("unconditional_case", OutAgree(current_domain))),
   //       |- ( InlineAgree("unconditional_case") )
   )
 

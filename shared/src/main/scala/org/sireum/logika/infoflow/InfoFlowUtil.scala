@@ -6,7 +6,7 @@ import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
 import org.sireum.logika.State.Claim.Let
-import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, FlowContext, FlowContextType, InfoFlowsType}
+import org.sireum.logika.infoflow.InfoFlowContext._
 import org.sireum.logika.{Logika, Smt2, Smt2Query, State, StateTransformer}
 import org.sireum.message.Position
 
@@ -32,6 +32,27 @@ object InfoFlowUtil {
     }
   }
 
+
+  def addInAgreeClaims(flowContext: AssumeContextType, state: State): State = {
+    var s = state
+    for (entry <- flowContext.entries;
+         sym <- entry._2.requirementSyms ++ entry._2.inAgreementSyms) {
+      s = s.addClaim(State.Claim.Custom(InfoFlowAgreeSym(sym, entry._1)))
+    }
+    return s
+  }
+
+  def addOutAgreeClaims(state: State, invariantFlows: InfoFlowsType,
+                        logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): State = {
+    var s = state
+    for (infoFlow <- invariantFlows.values;
+         exp <- infoFlow.outAgrees) {
+      val (s1, r) = InfoFlowUtil.intro(exp, s, logika, smt2, cache, reporter)
+      s = s1.addClaim(State.Claim.Custom(InfoFlowAgreeSym(r, infoFlow.label.value)))
+    }
+    return s
+  }
+
   def intro(exp: AST.Exp, state: State,
             logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): (State, State.Value.Sym) = {
     logika.singleStateValue(logika.evalExp(Split.Disabled, smt2, cache, F, state, exp, reporter)) match {
@@ -44,9 +65,9 @@ object InfoFlowUtil {
 
 
   def processInfoFlowInAgrees(infoFlows: InfoFlowsType,
-                              logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, state: State): (State, FlowContextType) = {
+                              logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, state: State): (State, AssumeContextType) = {
     var s = state
-    var flowContexts: FlowContextType = HashSMap.empty
+    var assumeContexts: AssumeContextType = HashMap.empty
 
     for (infoFlow <- infoFlows.values if s.status) {
       var reqSyms: ISZ[State.Value.Sym] = ISZ()
@@ -64,13 +85,13 @@ object InfoFlowUtil {
       }
 
       if (reqSyms.nonEmpty || inSyms.nonEmpty) {
-        flowContexts = flowContexts + (infoFlow.label.value ~> FlowContext(reqSyms, inSyms))
+        assumeContexts = assumeContexts + (infoFlow.label.value ~> AssumeContext(reqSyms, inSyms))
       }
     }
-    return (s, flowContexts)
+    return (s, assumeContexts)
   }
 
-  def checkInfoFlowAgreements(flowContexts: FlowContextType,
+  def checkInfoFlowAgreements(flowContexts: AssumeContextType,
                               flowChecks: ISZ[FlowCheckType],
                               title: String,
                               altPos: Position,
@@ -90,12 +111,12 @@ object InfoFlowUtil {
           } else {
             var s = state
 
-            val inAgreementsFromClaims: FlowContext =
+            val inAgreementsFromClaims: AssumeContext =
               InfoFlowContext.getClaimAgreementSyms(s).get(channel) match {
                 case Some(claimSyms) =>
                   assert(claimSyms.requirementSyms.isEmpty && claimSyms.inAgreementSyms.nonEmpty)
                   claimSyms
-                case _ => FlowContext(ISZ(), ISZ())
+                case _ => AssumeContext(ISZ(), ISZ())
               }
 
             // introduce sym value for the outAgrees

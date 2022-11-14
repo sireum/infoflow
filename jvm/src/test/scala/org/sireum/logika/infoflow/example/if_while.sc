@@ -11,10 +11,9 @@ var result: Z = 0
 var b_in: Z = 0
 var b_acc: Z = 0
 
-
 def if_while(): Unit = {
   Contract(
-    Modifies(result),
+    Modifies(result, num),
     InfoFlows(
       FlowCase("num",
         InAgree(num, s),
@@ -26,7 +25,9 @@ def if_while(): Unit = {
   if(s > 0) {
     // multiply
     var num_accMult: Z = num
+    //num = b_in
     var counter: Z = s
+    //Deduce( |- (AssertAgree("num", OutAgree(num_accMult, num))))
     while(counter > 0) {
       Invariant(
         Modifies(num_accMult, counter),

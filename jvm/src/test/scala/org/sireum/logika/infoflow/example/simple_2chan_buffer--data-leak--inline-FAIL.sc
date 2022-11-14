@@ -20,9 +20,9 @@ def simple_2chan_buffer__inline_leak(): Unit = {
   )
   a_out = a_in;
   b_out = a_in // b_in << leak here
-  Deduce( |- ( InlineAgree("b") ))
+  Deduce( |- ( AssertAgree("b") ))
   b_out = b_in // << override/mask the leak
-  Deduce( |- ( InlineAgree("a") ),
-          |- ( InlineAgree("b") ))
+  Deduce( |- ( AssertAgree("a") ),
+          |- ( AssertAgree("b") ))
   assert(T)
 }
