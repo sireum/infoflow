@@ -49,18 +49,15 @@ exit /B %errorlevel%
 // #Sireum
 import org.sireum._
 
-
 def usage(): Unit = {
   println("Sireum Logika InfoFlow /build")
   println("Usage: ( compile | test | tipe )+")
 }
 
-
 if (Os.cliArgs.isEmpty) {
   usage()
   Os.exit(0)
 }
-
 
 val homeBin = Os.slashDir
 val home = homeBin.up
@@ -71,9 +68,39 @@ val project: Os.Path = homeBin / "project4testing.cmd"
 
 var didTipe = F
 var didCompile = F
-val versions = (home / "versions.properties").properties
-val cache = Os.home / "Downloads" / "sireum"
 
+val versions = (home / "versions.properties").properties
+
+val cache: Os.Path = Os.env("SIREUM_CACHE") match {
+  case Some(p) =>
+    val d = Os.path(p)
+    if (!d.exists) {
+      d.mkdirAll()
+    }
+    d
+  case _ => Os.home / "Downloads" / "sireum"
+}
+
+def installCoursier(): Unit = {
+  val version = versions.get("org.sireum.version.coursier").get
+  val ver = home / "lib" / "coursier.jar.ver"
+  if (ver.exists && ver.read == version) {
+    return
+  }
+
+  val drop = cache / s"coursier-$version.jar"
+  if (!drop.exists) {
+    println(s"Downloading Coursier $version ...")
+    val url = s"https://github.com/coursier/coursier/releases/download/v$version/coursier.jar"
+    drop.downloadFrom(url)
+    println()
+  }
+
+  val coursierJar = home / "lib" / "coursier.jar"
+  drop.copyOverTo(coursierJar)
+
+  ver.writeOver(version)
+}
 
 def platformKind(kind: Os.Kind.Type): String = {
   kind match {
@@ -128,7 +155,6 @@ def installZ3(kind: Os.Kind.Type): Unit = {
 
   ver.writeOver(version)
 }
-
 
 def installCVC(kind: Os.Kind.Type): Unit = {
   def installCVCGen(gen: String, version: String): Unit = {
@@ -220,7 +246,6 @@ def installAltErgoOpen(kind: Os.Kind.Type): Unit = {
   ver.writeOver(version)
 }
 
-
 def clone(repo: String): Unit = {
   if (!(home / repo).exists) {
     Os.proc(ISZ("git", "clone", "--depth=1", s"https://github.com/sireum/$repo")).at(home).console.runCheck()
@@ -230,7 +255,6 @@ def clone(repo: String): Unit = {
   println()
 }
 
-
 def tipe(): Unit = {
   if (!didTipe) {
     didTipe = T
@@ -239,7 +263,6 @@ def tipe(): Unit = {
     println()
   }
 }
-
 
 def compile(): Unit = {
   if (!didCompile) {
@@ -251,7 +274,6 @@ def compile(): Unit = {
   }
 }
 
-
 def test(): Unit = {
   tipe()
   println("Running shared tests ...")
@@ -259,14 +281,14 @@ def test(): Unit = {
   println()
 }
 
+for (m <- ISZ("runtime", "slang", "logika")) {
+  clone(m)
+}
 
 installZ3(Os.kind)
 installCVC(Os.kind)
 installAltErgoOpen(Os.kind)
-
-for (m <- ISZ("runtime", "slang", "logika")) {
-  clone(m)
-}
+installCoursier()
 
 for (i <- 0 until Os.cliArgs.size) {
   Os.cliArgs(i) match {
