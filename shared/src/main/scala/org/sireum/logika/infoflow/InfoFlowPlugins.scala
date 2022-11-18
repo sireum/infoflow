@@ -70,7 +70,7 @@ object InfoFlowPlugins {
         }
         val p = updateInVarMaps(logikaMethod(th, mconfig, res.owner, method.sig.id.value, receiverTypeOpt, method.sig.paramIdTypes,
           method.sig.returnType.typedOpt.get, methodPosOpt, reads, requires, modifies, ensures,
-          if (labelOpt.isEmpty) ISZ() else ISZ(labelOpt.get), plugins, None(), HashSet.empty), smt2, cache, state, reporter)
+          if (labelOpt.isEmpty) ISZ() else ISZ(labelOpt.get), plugins, None(), ISZ()), smt2, cache, state, reporter)
         state = p._2
         p._1
       }
@@ -348,7 +348,7 @@ object InfoFlowLoopStmtPlugin {
                   } else {
                     None()
                   }
-                  srw = Util.rewriteLocalVars(srw, modLocalVars.keys, whileStmt.posOpt, reporter)
+                  srw = Util.rewriteLocalVars(logika, srw, modLocalVars.keys, whileStmt.posOpt, reporter)
                   for (p <- modLocalVars.entries) {
                     val (res, (tipe, pos)) = p
                     val (srw4, sym) = Util.idIntro(pos, srw, res.context, res.id, tipe, Some(pos))
