@@ -69,7 +69,7 @@ object InfoFlowUtil {
     var s = state
     var assumeContexts: AssumeContextType = HashMap.empty
 
-    for (infoFlow <- infoFlows.values if s.status) {
+    for (infoFlow <- infoFlows.values if s.ok) {
       var reqSyms: ISZ[State.Value.Sym] = ISZ()
       for (req <- infoFlow.requires) {
         val (s1, r) = intro(req, s, logika, smt2, cache, reporter)
@@ -106,7 +106,7 @@ object InfoFlowUtil {
         val pos: Position = if (flowCheck._2.nonEmpty) flowCheck._2.get else altPos
 
         for (state <- states) {
-          if (!state.status) {
+          if (!state.ok) {
             r = r :+ state
           } else {
             var s = state
@@ -191,7 +191,7 @@ object InfoFlowUtil {
               case Smt2Query.Result.Kind.Error => logika.error(Some(pos), s"${title}Error encountered when checking flow case $channel", reporter)
             }
 
-            r = r :+ state(status = ok)
+            r = r :+ state(status = State.statusOf(ok))
           }
         }
       }

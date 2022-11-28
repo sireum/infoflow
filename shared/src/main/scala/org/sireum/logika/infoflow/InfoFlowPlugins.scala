@@ -308,7 +308,7 @@ object InfoFlowLoopStmtPlugin {
             })
 
             if (reporter.hasError) {
-              return r :+ s0(status = F)
+              return r :+ s0(status = State.Status.Error)
             }
 
             val nonFlowInvariants = whileStmt.invariants.filter((e: Exp) => !e.isInstanceOf[InfoFlowInvariant])
@@ -321,7 +321,7 @@ object InfoFlowLoopStmtPlugin {
               "Flow Loop Invariant at the beginning of while-loop: ", whileStmt.posOpt.get,
               logika, smt2, cache, reporter, postInvStates)) {
 
-              if (s0w.status) {
+              if (s0w.ok) {
 
                 val flowInAgrees = InfoFlowUtil.processInfoFlowInAgrees(invariantFlows,
                   logika, smt2, cache, reporter, s0w)
@@ -365,11 +365,12 @@ object InfoFlowLoopStmtPlugin {
                   srw
                 }
 
-                val s2 = State(T, s0R.claims ++ (for (i <- s0.claims.size until s1.claims.size) yield s1.claims(i)), s0R.nextFresh)
+                val s2 = s0R(claims = s0R.claims ++ (for (i <- s0.claims.size until s1.claims.size) yield s1.claims(i)),
+                  nextFresh = s0R.nextFresh)
 
                 for (p <- logika.evalExp(split, smt2, cache, rtCheck, s2, whileStmt.cond, reporter)) {
                   val (s3, v) = p
-                  if (s3.status) {
+                  if (s3.ok) {
                     val pos = whileStmt.cond.posOpt.get
                     val (s4, cond) = logika.value2Sym(s3, v, pos)
                     val prop = State.Claim.Prop(T, cond)
@@ -382,7 +383,7 @@ object InfoFlowLoopStmtPlugin {
                       // can satisfy the true branch of the loop condition,
                       // so now evaluate the loop loop body
                       for (s5 <- logika.evalStmts(split, smt2, cache, None(), rtCheck, s4(claims = thenClaims), whileStmt.body.stmts, reporter)) {
-                        if (s5.status) {
+                        if (s5.ok) {
 
                           val postLoopStates = logika.checkExps(split, smt2, cache, F, "Loop invariant", " at the end of while-loop",
                             s5, nonFlowInvariants, reporter)
@@ -414,7 +415,7 @@ object InfoFlowLoopStmtPlugin {
                     val elseSat = smt2.sat(cache, T, logika.config.logVc, logika.config.logVcDirOpt,
                       s"while-false-branch at [${pos.beginLine}, ${pos.beginColumn}]", pos, elseClaims, reporter)
 
-                    var state = State(status = elseSat, claims = elseClaims, nextFresh = nextFresh)
+                    var state = State(status = State.statusOf(elseSat), claims = elseClaims, nextFresh = nextFresh)
 
                     // now capture the current value of each channels' out agreements
                     state = InfoFlowUtil.addOutAgreeClaims(state, invariantFlows, logikax, smt2, cache, reporter)
@@ -440,7 +441,7 @@ object InfoFlowLoopStmtPlugin {
             } else {
               halt("Infeasible")
             }
-            return ISZ(s0(status = F))
+            return ISZ(s0(status = State.Status.Error))
         }
       case _ => halt("Infeasible")
     }
