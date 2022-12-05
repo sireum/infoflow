@@ -109,7 +109,7 @@ object InfoFlowPlugins {
         logika, smt2, cache, reporter, ss)
 
       // if method has a return statement then logika will have already called checkMethodPost.
-      // The state.status will either be End or Error (ie. Normal/'ok') so calling checkMethodPost
+      // The state.status will either be End or Error (ie. not Normal/'ok') so calling checkMethodPost
       // again will do nothing
       val ssPost: ISZ[State] = Util.checkMethodPost(logika, smt2, cache, reporter, ss2, methodPosOpt, invs, ensures, mconfig.logPc, mconfig.logRawPc,
         if (stmts.nonEmpty) stmts(stmts.size - 1).posOpt else None())

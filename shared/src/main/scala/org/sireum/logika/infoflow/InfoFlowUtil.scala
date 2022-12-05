@@ -69,7 +69,7 @@ object InfoFlowUtil {
     var s = state
     var assumeContexts: AssumeContextType = HashMap.empty
 
-    assert (s.status != State.Status.End, "How did we reach the return statement if we haven't processed the in agreements yet")
+    assert(s.status != State.Status.End, "How did we reach the return statement if we haven't processed the in agreements yet")
 
     for (infoFlow <- infoFlows.values if s.ok) {
       var reqSyms: ISZ[State.Value.Sym] = ISZ()
@@ -108,18 +108,17 @@ object InfoFlowUtil {
         val pos: Position = if (flowCheck._2.nonEmpty) flowCheck._2.get else altPos
 
         for (state <- states) {
-          //if (!state.ok) {
-          if(state.status == State.Status.Error) {
+          if (state.status == State.Status.Error) {
             r = r :+ state
           } else {
-            assert (state.status == State.Status.Normal || state.status == State.Status.End, s"Not expecting ${state.status}")
+            assert(state.status == State.Status.Normal || state.status == State.Status.End, s"Not expecting ${state.status}")
 
-            // if method has a return statement then Logika will have already called checkMethodPost
+            // if the method has a return statement then Logika will have already called checkMethodPost
             // and therefore the state's status will either be End or Normal.  If the former then
-            // subsequent evalExp's (e.g. when intro'ing the in and out agreements) will result in
+            // subsequent evalExp's (e.g. when intro'ing the out agreements) will result in
             // errors since the state status is not Normal/'ok'.  Workaround is to switch the state
             // back to 'ok' -- note we're throwing away 's' after checking its flows.
-            var s = state(status = State.Status.Normal)
+            var s: State = if (state.ok) state else state(status = State.Status.Normal)
 
             val inAgreementsFromClaims: AssumeContext =
               InfoFlowContext.getClaimAgreementSyms(s).get(channel) match {
@@ -201,7 +200,7 @@ object InfoFlowUtil {
               case Smt2Query.Result.Kind.Error => logika.error(Some(pos), s"${title}Error encountered when checking flow case $channel", reporter)
             }
 
-            r = r :+ state(status = State.statusOf(ok))
+            r = r :+ (if (ok) state else state(status = State.Status.Error))
           }
         }
       }
