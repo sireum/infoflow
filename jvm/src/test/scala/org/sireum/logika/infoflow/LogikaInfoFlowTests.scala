@@ -16,18 +16,22 @@ import LogikaInfoFlowTests._
 class LogikaInfoFlowTests extends SireumRcSpec {
 
   def shouldIgnore(name: Predef.String): B = {
+    //name != "channel_buffer.sc"
     false
   }
 
   val root = Os.path(".") / "infoflow" / "jvm" / "src" / "test" / "scala" / "org" / "sireum" / "logika" / "infoflow"
 
   def textResources: scala.collection.Map[scala.Vector[Predef.String], Predef.String] = {
-    { // force marcro expansion when in IVE
-      val root = Os.path(".") / "infoflow" / "jvm" / "src" / "test" / "scala" / "org" / "sireum" / "logika" / "infoflow"
-      val p = root / "LogikaInfoFlowTests.scala"
-      if(p.exists) {
-        p.writeOver(s"${p.read} ")
-      }
+    ((Os.env("__CFBundleIdentifier"), Os.env("USER"))) match {
+      case (Some(ive), Some(user)) if ive == string"com.jetbrains.intellij.ce" && user == string"belt" =>
+        val root = Os.path(".") / "infoflow" / "jvm" / "src" / "test" / "scala" / "org" / "sireum" / "logika" / "infoflow"
+        val p = root / "LogikaInfoFlowTests.scala"
+        if (p.exists) { // force macro expansion when in IVE
+          val content = ops.StringOps(p.read)
+          p.writeOver(if (content.endsWith(" ")) content.substring(0, content.size - 1) else s"${p.read} ")
+        }
+      case _ =>
     }
     val m = $internal.RC.text(Vector("example")) { (p, f) => p.last.endsWith(".sc") }
     implicit val ordering: Ordering[Vector[Predef.String]] = m.ordering
@@ -48,7 +52,7 @@ class LogikaInfoFlowTests extends SireumRcSpec {
     var c = config(simplifiedQuery = isSimplified)
     val f = Os.path(p.mkString(Os.fileSep.value))
 
-    if(logVc) {
+    if (logVc) {
       val d = root / "example" / s"vcs_${(ops.StringOps(p.last).substring(0, p.last.length - 3))}" / path.last
       logVcDirOpt = Some(d.string)
       if (d.exists) {
@@ -70,4 +74,4 @@ class LogikaInfoFlowTests extends SireumRcSpec {
       !reporter.hasIssue
     }
   }
-}           
+} 

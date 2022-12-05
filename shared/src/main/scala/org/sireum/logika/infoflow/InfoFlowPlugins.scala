@@ -11,7 +11,7 @@ import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
 import org.sireum.logika.State.Claim.Let
-import org.sireum.logika.Util.{checkMethodPost, checkMethodPre, logikaMethod, updateInVarMaps}
+import org.sireum.logika.Util
 import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, InfoFlowsType}
 import org.sireum.logika.plugin.{ClaimPlugin, MethodPlugin, Plugin, StmtPlugin}
 import org.sireum.logika.{Config, Context, Logika, Smt2, State, Util}
@@ -68,14 +68,14 @@ object InfoFlowPlugins {
             case _ => halt("Infeasible")
           }
         }
-        val p = updateInVarMaps(logikaMethod(th, mconfig, res.owner, method.sig.id.value, receiverTypeOpt, method.sig.paramIdTypes,
+        val p = Util.updateInVarMaps(Util.logikaMethod(th, mconfig, res.owner, method.sig.id.value, receiverTypeOpt, method.sig.paramIdTypes,
           method.sig.returnType.typedOpt.get, methodPosOpt, reads, requires, modifies, ensures,
           if (labelOpt.isEmpty) ISZ() else ISZ(labelOpt.get), plugins, None(), ISZ()), smt2, cache, state, reporter)
         state = p._2
         p._1
       }
       val invs = logika.retrieveInvs(res.owner, res.isInObject)
-      state = checkMethodPre(logika, smt2, cache, reporter, state, methodPosOpt, invs, requires)
+      state = Util.checkMethodPre(logika, smt2, cache, reporter, state, methodPosOpt, invs, requires)
 
       var infoFlows: InfoFlowsType = HashMap.empty[String, InfoFlow]
       for (infoFlow <- infoFlowsNode) {
@@ -108,7 +108,10 @@ object InfoFlowPlugins {
       val ss2: ISZ[State] = InfoFlowUtil.checkInfoFlowAgreements(augInAgrees, flowChecks, "Post Flow: ", methodPosOpt.get,
         logika, smt2, cache, reporter, ss)
 
-      val ssPost: ISZ[State] = checkMethodPost(logika, smt2, cache, reporter, ss2, methodPosOpt, invs, ensures, mconfig.logPc, mconfig.logRawPc,
+      // if method has a return statement then logika will have already called checkMethodPost.
+      // The state.status will either be End or Error (ie. Normal/'ok') so calling checkMethodPost
+      // again will do nothing
+      val ssPost: ISZ[State] = Util.checkMethodPost(logika, smt2, cache, reporter, ss2, methodPosOpt, invs, ensures, mconfig.logPc, mconfig.logRawPc,
         if (stmts.nonEmpty) stmts(stmts.size - 1).posOpt else None())
     }
 

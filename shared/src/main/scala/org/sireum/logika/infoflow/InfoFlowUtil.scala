@@ -69,6 +69,8 @@ object InfoFlowUtil {
     var s = state
     var assumeContexts: AssumeContextType = HashMap.empty
 
+    assert (s.status != State.Status.End, "How did we reach the return statement if we haven't processed the in agreements yet")
+
     for (infoFlow <- infoFlows.values if s.ok) {
       var reqSyms: ISZ[State.Value.Sym] = ISZ()
       for (req <- infoFlow.requires) {
@@ -106,10 +108,18 @@ object InfoFlowUtil {
         val pos: Position = if (flowCheck._2.nonEmpty) flowCheck._2.get else altPos
 
         for (state <- states) {
-          if (!state.ok) {
+          //if (!state.ok) {
+          if(state.status == State.Status.Error) {
             r = r :+ state
           } else {
-            var s = state
+            assert (state.status == State.Status.Normal || state.status == State.Status.End, s"Not expecting ${state.status}")
+
+            // if method has a return statement then Logika will have already called checkMethodPost
+            // and therefore the state's status will either be End or Error.  If the latter then
+            // subsequent evalExp's (e.g. when intro'ing the in and out agreements) will result in
+            // errors since the state status is not Normal/'ok'.  Workaround is to switch the state
+            // back to 'ok' -- note we're throwing away 's' after checking it's flows.
+            var s = state(status = State.Status.Normal)
 
             val inAgreementsFromClaims: AssumeContext =
               InfoFlowContext.getClaimAgreementSyms(s).get(channel) match {
