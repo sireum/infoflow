@@ -115,10 +115,10 @@ object InfoFlowUtil {
             assert (state.status == State.Status.Normal || state.status == State.Status.End, s"Not expecting ${state.status}")
 
             // if method has a return statement then Logika will have already called checkMethodPost
-            // and therefore the state's status will either be End or Error.  If the former then
+            // and therefore the state's status will either be End or Normal.  If the former then
             // subsequent evalExp's (e.g. when intro'ing the in and out agreements) will result in
             // errors since the state status is not Normal/'ok'.  Workaround is to switch the state
-            // back to 'ok' -- note we're throwing away 's' after checking it's flows.
+            // back to 'ok' -- note we're throwing away 's' after checking its flows.
             var s = state(status = State.Status.Normal)
 
             val inAgreementsFromClaims: AssumeContext =
