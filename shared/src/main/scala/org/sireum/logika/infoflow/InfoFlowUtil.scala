@@ -64,8 +64,8 @@ object InfoFlowUtil {
   }
 
 
-  def processInfoFlowInAgrees(infoFlows: InfoFlowsType,
-                              logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, state: State): (State, AssumeContextType) = {
+  def captureAgreementValues(infoFlows: InfoFlowsType, captureInAgreements: B,
+                             logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, state: State): (State, AssumeContextType) = {
     var s = state
     var assumeContexts: AssumeContextType = HashMap.empty
 
@@ -73,14 +73,17 @@ object InfoFlowUtil {
 
     for (infoFlow <- infoFlows.values if s.ok) {
       var reqSyms: ISZ[State.Value.Sym] = ISZ()
-      for (req <- infoFlow.requires) {
-        val (s1, r) = intro(req, s, logika, smt2, cache, reporter)
-        s = s1
-        reqSyms = reqSyms :+ r
+      if (captureInAgreements) {
+        for (req <- infoFlow.requires) {
+          val (s1, r) = intro(req, s, logika, smt2, cache, reporter)
+          s = s1
+          reqSyms = reqSyms :+ r
+        }
       }
 
       var inSyms: ISZ[State.Value.Sym] = ISZ()
-      for (inExp <- infoFlow.inAgrees) {
+      val agreements: ISZ[AST.Exp] = if (captureInAgreements) infoFlow.inAgrees else infoFlow.outAgrees
+      for (inExp <- agreements) {
         val (s1, r) = intro(inExp, s, logika, smt2, cache, reporter)
         s = s1
         inSyms = inSyms :+ r
@@ -128,6 +131,8 @@ object InfoFlowUtil {
                 case _ => AssumeContext(ISZ(), ISZ())
               }
 
+            val implicationAgreements = InfoFlowContext.getImplicationAgreements(s)
+
             // introduce sym value for the outAgrees
             var outSyms: ISZ[State.Value.Sym] = ISZ()
             for (outExp <- outAgrees) {
@@ -159,6 +164,33 @@ object InfoFlowUtil {
             for (inSym <- flowContext.inAgreementSyms ++ inAgreementsFromClaims.inAgreementSyms) {
               val secInSym = inSym(num = inSym.num + lastSymNum)
               s = s.addClaim(State.Claim.Eq(inSym, secInSym))
+            }
+
+            for (implication <- implicationAgreements) {
+              val lhs = implication.lhs
+              val rhs = implication.rhs
+
+              val secondTraceLhs = lhs.map((sym: State.Value.Sym) => sym(num = sym.num + lastSymNum))
+              val secondTraceRhs = rhs.map((sym: State.Value.Sym) => sym(num = sym.num + lastSymNum))
+
+              assert(lhs.size == 1 && rhs.size == 1, "TODO")
+
+              val (s1, sym1) = s.freshSym(AST.Typed.b, pos)
+              s = s1
+              val claim1 = State.Claim.Let.Binary(sym1, lhs(0), AST.Exp.BinaryOp.Eq, secondTraceLhs(0), lhs(0).tipe)
+              s = s.addClaim(claim1)
+
+              val (s2, sym2) = s.freshSym(AST.Typed.b, pos)
+              s = s2
+              val claim2 = State.Claim.Let.Binary(sym2, rhs(0), AST.Exp.BinaryOp.Eq, secondTraceRhs(0), rhs(0).tipe)
+              s = s.addClaim(claim2)
+
+              val (s3, sym3) = s.freshSym(AST.Typed.b, pos)
+              s = s3
+              val claim3 = State.Claim.Let.Binary(sym3, sym1, AST.Exp.BinaryOp.Imply, sym2, sym1.tipe)
+              s = s.addClaim(claim3)
+
+              s = s.addClaim(State.Claim.Prop(T, sym3))
             }
 
             // add out agreements claims

@@ -28,6 +28,19 @@ object InfoFlowContext {
 
   type FlowCheckType = (Channel, Option[Position], ISZ[AST.Exp])
 
+  @datatype class InfoFlowImplicationAgree(val lhs: ISZ[State.Value.Sym],
+                                           val rhs: ISZ[State.Value.Sym]) extends Data {
+    @pure def toRawST: ST = {
+      halt("stub")
+    }
+
+    def toSTs(claimSTs: Util.ClaimSTs, numMap: Util.NumMap, defs: HashMap[Z, ISZ[State.Claim.Let]]): Unit = {}
+
+    @pure def types: ISZ[Typed] = {
+      return ISZ()
+    }
+  }
+
   @datatype class InfoFlowAgreeSym(val sym: State.Value.Sym,
                                    val channel: String) extends Data {
     @pure def toRawST: ST = {
@@ -45,6 +58,22 @@ object InfoFlowContext {
 
   @datatype class InfoFlowsValue(val infoFlows: InfoFlowsType) extends Context.Value
 
+
+  type SImplicationAgree = ISZ[InfoFlowImplicationAgree]
+
+  @datatype class CollectImplicationAgreements() extends  StateTransformer.PrePost[SImplicationAgree] {
+    override
+    def preStateClaimCustom(ctx: SImplicationAgree,
+                            o: State.Claim.Custom): StateTransformer.PreResult[SImplicationAgree, State.Claim] = {
+      o match {
+        case State.Claim.Custom(i: InfoFlowImplicationAgree) =>
+          return StateTransformer.PreResult(ctx :+ i, T, None())
+        case _ =>
+          return StateTransformer.PreResult(ctx, T, None())
+      }
+    }
+  }
+
   type SClaimAgree = ISZ[InfoFlowAgreeSym]
 
   @datatype class CollectAgreementSyms() extends StateTransformer.PrePost[SClaimAgree] {
@@ -61,6 +90,10 @@ object InfoFlowContext {
     }
   }
 
+  def getImplicationAgreements(state: State): ISZ[InfoFlowImplicationAgree] = {
+    return StateTransformer[SImplicationAgree](InfoFlowContext.CollectImplicationAgreements()).transformState(ISZ(), state).ctx
+  }
+
   def getClaimAgreementSyms(state: State): AssumeContextType = {
     var ret: AssumeContextType = HashMap.empty
     val agreementClaims = StateTransformer[SClaimAgree](InfoFlowContext.CollectAgreementSyms()).transformState(ISZ(), state).ctx
@@ -73,12 +106,8 @@ object InfoFlowContext {
     return ret
   }
 
-  def putInAgreementsL(inAgreements: AssumeContextType, logika: Logika): Logika = {
-    return logika(context = logika.context(storage = putInAgreements(inAgreements, logika.context.storage)))
-  }
-
-  def putInAgreements(inAgreements: AssumeContextType, store: LogikaStore): LogikaStore = {
-    getInAgreements(store) match {
+  def putInAgreements(inAgreements: AssumeContextType, logika: Logika): Logika = {
+    getInAgreements(logika) match {
       case Some(existingMap) =>
         var mergedMap = existingMap
         for (entry <- inAgreements.entries if mergedMap.contains(entry._1)) {
@@ -86,13 +115,13 @@ object InfoFlowContext {
           val mergedInAgreements = mergedMap.get(entry._1).get.inAgreementSyms ++ entry._2.inAgreementSyms
           mergedMap = mergedMap + entry._1 ~> AssumeContext(mergedReqSyms, mergedInAgreements)
         }
-        return store + IN_AGREE_KEY ~> InAgreementValue(mergedMap)
-      case _ => return store + IN_AGREE_KEY ~> InAgreementValue(inAgreements)
+        return logika(context = logika.context(storage = logika.context.storage + IN_AGREE_KEY ~> InAgreementValue(mergedMap)))
+      case _ => return logika(context = logika.context(storage = logika.context.storage + IN_AGREE_KEY ~> InAgreementValue(inAgreements)))
     }
   }
 
-  def getInAgreements(store: LogikaStore): Option[AssumeContextType] = {
-    val ret: Option[AssumeContextType] = store.get(IN_AGREE_KEY) match {
+  def getInAgreements(logika: Logika): Option[AssumeContextType] = {
+    val ret: Option[AssumeContextType] = logika.context.storage.get(IN_AGREE_KEY) match {
       case Some(InAgreementValue(v)) => return Some(v)
       case _ => return None()
     }
@@ -107,8 +136,8 @@ object InfoFlowContext {
     return context + INFO_FLOWS_KEY ~> InfoFlowsValue(infoFlows)
   }
 
-  def getInfoFlows(storage: LogikaStore): Option[InfoFlowsType] = {
-    val ret: Option[InfoFlowsType] = storage.get(INFO_FLOWS_KEY) match {
+  def getInfoFlows(logkika: Logika): Option[InfoFlowsType] = {
+    val ret: Option[InfoFlowsType] = logkika.context.storage.get(INFO_FLOWS_KEY) match {
       case Some(InfoFlowsValue(v)) => Some(v)
       case _ => None()
     }

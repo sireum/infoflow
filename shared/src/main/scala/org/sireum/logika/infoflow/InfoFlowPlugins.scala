@@ -36,7 +36,12 @@ object InfoFlowPlugins {
     }
   }
 
-  @strictpure def canHandleCompositional(th: TypeHierarchy, info: Context.InvokeMethodInfo): B = F
+  @pure def canHandleCompositional(th: TypeHierarchy, info: Context.InvokeMethodInfo): B = {
+    info.contract match {
+      case AST.MethodContract.Simple(_, _, _, _, flows, _) => return flows.flows.nonEmpty
+      case _ => return F
+    }
+  }
 
   @pure def handle(th: TypeHierarchy,
                    plugins: ISZ[Plugin],
@@ -89,11 +94,11 @@ object InfoFlowPlugins {
         return
       }
 
-      val stateSyms = InfoFlowUtil.processInfoFlowInAgrees(infoFlows, logika, smt2, cache, reporter, state)
+      val stateSyms = InfoFlowUtil.captureAgreementValues(infoFlows, T, logika, smt2, cache, reporter, state)
       state = stateSyms._1
 
       logika = InfoFlowContext.putInfoFlowsL(infoFlows, logika)
-      logika = InfoFlowContext.putInAgreementsL(stateSyms._2, logika)
+      logika = InfoFlowContext.putInAgreements(stateSyms._2, logika)
 
       val stmts = method.bodyOpt.get.stmts
       val ss: ISZ[State] = if (method.purity == AST.Purity.StrictPure) {
@@ -102,7 +107,7 @@ object InfoFlowPlugins {
         logika.evalStmts(Split.Default, smt2, cache, None(), T, state, stmts, reporter)
       }
 
-      val augInAgrees = InfoFlowContext.getInAgreements(logika.context.storage).get
+      val augInAgrees = InfoFlowContext.getInAgreements(logika).get
 
       val flowChecks: ISZ[FlowCheckType] = infoFlows.values.map((m: InfoFlow) => ((m.label.value, m.label.posOpt, m.outAgrees)))
       val ss2: ISZ[State] = InfoFlowUtil.checkInfoFlowAgreements(augInAgrees, flowChecks, "Post Flow: ", methodPosOpt.get,
@@ -125,11 +130,14 @@ object InfoFlowPlugins {
     return T
   }
 
-  def handleCompositional(logika: Logika, posOpt: Option[message.Position], info: Context.InvokeMethodInfo,
+  def handleCompositional(logika: Logika, smt2: Smt2, cache: Smt2.Cache, rtCheck: B, split: Split.Type,
+                          posOpt: Option[message.Position], info: Context.InvokeMethodInfo,
                           state: State, typeSubstMap: HashMap[String, AST.Typed], retType: AST.Typed,
                           invokeReceiverOpt: Option[AST.Exp], receiverOpt: Option[State.Value.Sym],
-                          paramArgs: ISZ[(AST.ResolvedInfo.LocalVar, AST.Typed, AST.Exp, State.Value)]): ISZ[(State, State.Value)] = {
-    halt("Infeasible")
+                          paramArgs: ISZ[(AST.ResolvedInfo.LocalVar, AST.Typed, AST.Exp, State.Value)],
+                          reporter: Reporter): ISZ[(State, State.Value)] = {
+    return InfoFlowCompositional.handleCompositional(logika, smt2, cache, rtCheck, split, posOpt, info, state,
+      typeSubstMap, retType, invokeReceiverOpt, receiverOpt, paramArgs, reporter)
   }
 }
 
@@ -158,7 +166,7 @@ object InfoFlowAssumeAgreeStmtPlugin {
     // TODO: probably should only allow one AgreeAssume per Deduce block
     stmt match {
       case AST.Stmt.DeduceSequent(None(), sequents) =>
-        val infoFlows = InfoFlowContext.getInfoFlows(logika.context.storage).get
+        val infoFlows = InfoFlowContext.getInfoFlows(logika).get
 
         for (sequent <- sequents) {
           sequent match {
@@ -175,7 +183,7 @@ object InfoFlowAssumeAgreeStmtPlugin {
                       inAgreeClause = inAgreesClause,
                       outAgreeClause = AST.MethodContract.Claims.empty)
 
-                  val stateSyms = InfoFlowUtil.processInfoFlowInAgrees(flow, logika, smt2, cache, reporter, s)
+                  val stateSyms = InfoFlowUtil.captureAgreementValues(flow, T, logika, smt2, cache, reporter, s)
                   s = InfoFlowUtil.addInAgreeClaims(stateSyms._2, stateSyms._1)
 
                 case _ =>
@@ -213,8 +221,8 @@ object InfoFlowAssertAgreeStmtPlugin {
 
   @pure def canHandle(logika: Logika, stmt: AST.Stmt): B = {
 
-    return InfoFlowContext.getInfoFlows(logika.context.storage).nonEmpty &&
-      InfoFlowContext.getInAgreements(logika.context.storage).nonEmpty &&
+    return InfoFlowContext.getInfoFlows(logika).nonEmpty &&
+      InfoFlowContext.getInAgreements(logika).nonEmpty &&
       stmt.isInstanceOf[AST.Stmt.DeduceSequent] &&
       Transformer(InfoFlowAssertAgreeStmtPlugin.AssertAgreeCheck()).transformStmt(F, stmt).ctx
   }
@@ -228,8 +236,8 @@ object InfoFlowAssertAgreeStmtPlugin {
     var r: ISZ[State] = ISZ(state)
     stmt match {
       case AST.Stmt.DeduceSequent(None(), sequents) =>
-        val infoFlows = InfoFlowContext.getInfoFlows(logika.context.storage).get
-        val inAgrees = InfoFlowContext.getInAgreements(logika.context.storage).get
+        val infoFlows = InfoFlowContext.getInfoFlows(logika).get
+        val inAgrees = InfoFlowContext.getInAgreements(logika).get
 
         for (sequent <- sequents) {
           sequent match {
@@ -280,8 +288,8 @@ object InfoFlowLoopStmtPlugin {
     stmt match {
       case whileStmt: AST.Stmt.While =>
         return InfoFlowLoopStmtPlugin.getFlowLoopInvariants(whileStmt.invariants).nonEmpty &&
-          InfoFlowContext.getInfoFlows(logika.context.storage).nonEmpty &&
-          InfoFlowContext.getInAgreements(logika.context.storage).nonEmpty
+          InfoFlowContext.getInfoFlows(logika).nonEmpty &&
+          InfoFlowContext.getInAgreements(logika).nonEmpty
       case _ => return F
     }
   }
@@ -299,7 +307,7 @@ object InfoFlowLoopStmtPlugin {
 
             var r = ISZ[State]()
 
-            val methodInAgreements = InfoFlowContext.getInAgreements(logika.context.storage).get
+            val methodInAgreements = InfoFlowContext.getInAgreements(logika).get
 
             val invariantFlows: InfoFlowsType = HashMap.empty[String, InfoFlow] ++ flowInvariant.flowInvariants.map((m: InfoFlow) => ((m.label.value, m)))
 
@@ -326,10 +334,10 @@ object InfoFlowLoopStmtPlugin {
 
               if (s0w.ok) {
 
-                val flowInAgrees = InfoFlowUtil.processInfoFlowInAgrees(invariantFlows,
+                val flowInAgrees = InfoFlowUtil.captureAgreementValues(invariantFlows, T,
                   logika, smt2, cache, reporter, s0w)
 
-                logika = InfoFlowContext.putInAgreementsL(flowInAgrees._2, logika)
+                logika = InfoFlowContext.putInAgreements(flowInAgrees._2, logika)
 
                 val s1 = flowInAgrees._1
                 val s0R: State = {
@@ -482,6 +490,7 @@ object InfoFlowLoopStmtPlugin {
 
   @pure def canHandleSymRewrite(data: Claim.Data): B = {
     data match {
+      case i: InfoFlowContext.InfoFlowImplicationAgree => return T
       case i: InfoFlowContext.InfoFlowAgreeSym => return T
       case _ => return F
     }
@@ -489,6 +498,10 @@ object InfoFlowLoopStmtPlugin {
 
   @pure def handleSymRewrite(rw: Util.SymAddRewriter, data: Claim.Data): MOption[Claim.Data] = {
     data match {
+      case i: InfoFlowContext.InfoFlowImplicationAgree =>
+        val mlhs: ISZ[State.Value.Sym] = for (sym <- i.lhs) yield rw.transformStateValueSym(sym).get
+        val mrhs: ISZ[State.Value.Sym] = for(sym <- i.rhs) yield rw.transformStateValueSym(sym).get
+        return MSome(i(lhs = mlhs, rhs = mrhs))
       case i: InfoFlowContext.InfoFlowAgreeSym => return MSome(i(sym = rw.transformStateValueSym(i.sym).get))
       case _ => halt("Infeasible")
     }
