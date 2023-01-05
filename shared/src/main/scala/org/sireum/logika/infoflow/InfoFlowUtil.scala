@@ -219,7 +219,8 @@ object InfoFlowUtil {
             val sym = bstack.pop.get._1
             val conclusion = State.Claim.Prop(T, sym)
 
-            val validity = smt2.valid(cache = cache, reportQuery = T, log = logika.config.logVc, logDirOpt = logika.config.logVcDirOpt,
+            val validity = smt2.valid(context = logika.context.methodName, cache = cache, reportQuery = T,
+              log = logika.config.logVc, logDirOpt = logika.config.logVcDirOpt,
               title = s"${title}Flow case $channel at [${pos.beginLine}, ${pos.endLine}]", pos = pos,
               premises = s.claims, conclusion = conclusion, reporter = reporter)
 
