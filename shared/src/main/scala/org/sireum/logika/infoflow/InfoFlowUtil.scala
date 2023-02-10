@@ -230,7 +230,7 @@ object InfoFlowUtil {
               case Smt2Query.Result.Kind.Sat => logika.error(Some(pos), s"${title}Flow case $channel violation", reporter)
               case Smt2Query.Result.Kind.Unknown => logika.error(Some(pos), s"${title}Could not verify flow case $channel", reporter)
               case Smt2Query.Result.Kind.Timeout => logika.error(Some(pos), s"${title}Timed out while checking flow case $channel", reporter)
-              case Smt2Query.Result.Kind.Error => logika.error(Some(pos), s"${title}Error encountered when checking flow case $channel", reporter)
+              case Smt2Query.Result.Kind.Error => logika.error(Some(pos), s"${title}Error encountered when checking flow case $channel\n${validity.info}", reporter)
             }
 
             r = r :+ (if (ok) state else state(status = State.Status.Error))
