@@ -3,7 +3,6 @@
 import org.sireum._
 import org.sireum.N16._
 
-
 // Creating a method with global return values for testing
 // auto info flow verification.
 var A_out_global: N16 = n16"0"

@@ -3,7 +3,7 @@
 package org.sireum.logika.infoflow
 
 import org.sireum._
-import org.sireum.lang.ast.MethodContract.InfoFlow
+import org.sireum.lang.ast.MethodContract.InfoFlowCase
 import org.sireum.lang.ast.Typed
 import org.sireum.lang.{ast => AST}
 import org.sireum.logika.State.Claim.Data
@@ -21,12 +21,24 @@ object InfoFlowContext {
 
   type AssumeContextType = HashMap[Channel, AssumeContext]
 
+  @enum object FlowKind {
+    "Case"
+    "Flow"
+    "Group"
+  }
+
+  @datatype class FlowElement(val flowCase: InfoFlowCase,
+                              val kind: FlowKind.Type)
+
   val INFO_FLOWS_KEY: String = "INFO_FLOWS_KEY"
-  type InfoFlowsType = HashMap[Channel, InfoFlow]
+  type InfoFlowsType = HashMap[Channel, FlowElement]
 
   type LogikaStore = HashMap[String, Context.Value]
 
-  type FlowCheckType = (Channel, Option[Position], ISZ[AST.Exp])
+  @datatype class FlowCheckType(val channel: Channel,
+                                val kind: FlowKind.Type,
+                                val optPos: Option[Position],
+                                val exps: ISZ[AST.Exp])
 
   @datatype class InfoFlowImplicationAgree(val lhs: ISZ[State.Value.Sym],
                                            val rhs: ISZ[State.Value.Sym]) extends Data {
@@ -61,7 +73,7 @@ object InfoFlowContext {
 
   type SImplicationAgree = ISZ[InfoFlowImplicationAgree]
 
-  @datatype class CollectImplicationAgreements() extends  StateTransformer.PrePost[SImplicationAgree] {
+  @datatype class CollectImplicationAgreements() extends StateTransformer.PrePost[SImplicationAgree] {
     override
     def preStateClaimCustom(ctx: SImplicationAgree,
                             o: State.Claim.Custom): StateTransformer.PreResult[SImplicationAgree, State.Claim] = {

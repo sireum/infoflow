@@ -3,7 +3,7 @@ package org.sireum.logika.infoflow
 
 import org.sireum._
 import org.sireum.lang.ast.Exp.InfoFlowInvariant
-import org.sireum.lang.ast.MethodContract.InfoFlow
+import org.sireum.lang.ast.MethodContract.InfoFlowCase
 import org.sireum.lang.ast.{Exp, Stmt, Transformer}
 import org.sireum.lang.symbol.TypeInfo
 import org.sireum.lang.tipe.TypeHierarchy
@@ -11,8 +11,7 @@ import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
 import org.sireum.logika.State.Claim.Let
-import org.sireum.logika.Util
-import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, InfoFlowsType}
+import org.sireum.logika.infoflow.InfoFlowContext.{FlowCheckType, FlowElement, FlowKind, InfoFlowsType}
 import org.sireum.logika.plugin.{ClaimPlugin, MethodPlugin, Plugin, StmtPlugin}
 import org.sireum.logika.{Config, Context, Logika, Smt2, State, Util}
 
@@ -54,8 +53,8 @@ object InfoFlowPlugins {
 
     val mconfig: Config = if (caseIndex >= 0) config(checkInfeasiblePatternMatch = F) else config
 
-    def checkCase(labelOpt: Option[AST.Exp.LitString], reads: ISZ[AST.Exp.Ref], requires: ISZ[AST.Exp],
-                  modifies: ISZ[AST.Exp.Ref], ensures: ISZ[AST.Exp], infoFlowsNode: ISZ[InfoFlow]): Unit = {
+    def checkInfoFlows(labelOpt: Option[AST.Exp.LitString], reads: ISZ[AST.Exp.Ref], requires: ISZ[AST.Exp],
+                       modifies: ISZ[AST.Exp.Ref], ensures: ISZ[AST.Exp], infoFlowsNode: ISZ[AST.MethodContract.InfoFlowElement]): Unit = {
       var state = State.create
       labelOpt match {
         case Some(label) if label.value != "" => state = state.addClaim(State.Claim.Label(label.value, label.posOpt.get))
@@ -82,12 +81,28 @@ object InfoFlowPlugins {
       val invs = logika.retrieveInvs(res.owner, res.isInObject)
       state = Util.checkMethodPre(logika, smt2, cache, reporter, state, methodPosOpt, invs, requires)
 
-      var infoFlows: InfoFlowsType = HashMap.empty[String, InfoFlow]
-      for (infoFlow <- infoFlowsNode) {
-        if (infoFlows.contains(infoFlow.label.value)) {
-          reporter.error(infoFlow.label.posOpt, name, "Flow case channels must be unique")
+      var infoFlows: InfoFlowsType = HashMap.empty[String, FlowElement]
+      for (infoFlowElement <- infoFlowsNode) {
+        infoFlowElement match {
+          case flowCase: AST.MethodContract.InfoFlowCase =>
+            if (infoFlows.contains(flowCase.label.value)) {
+              reporter.error(flowCase.label.posOpt, name, "Flow case channels must be unique")
+            }
+            infoFlows = infoFlows + flowCase.label.value ~> FlowElement(flowCase, FlowKind.Case)
+          case infoFlow: AST.MethodContract.InfoFlowFlow =>
+            val flowCase = InfoFlowUtil.translateToFlowCase(infoFlow)
+            if (infoFlows.contains(flowCase.label.value)) {
+              reporter.error(flowCase.label.posOpt, name, "Flows channels must be unique")
+            }
+            infoFlows = infoFlows + flowCase.label.value ~> FlowElement(flowCase, FlowKind.Flow)
+          case infoFlow: AST.MethodContract.InfoFlowGroup =>
+            val flows = InfoFlowUtil.translateToFlows(infoFlow, reads, modifies)
+            val flowCase = InfoFlowUtil.translateToFlowCase(flows)
+            if (infoFlows.contains(flowCase.label.value)) {
+              reporter.error(flowCase.label.posOpt, name, "Group labels must be unique")
+            }
+            infoFlows = infoFlows + flowCase.label.value ~> FlowElement(flowCase, FlowKind.Group)
         }
-        infoFlows = infoFlows + infoFlow.label.value ~> infoFlow
       }
 
       if (reporter.hasError) {
@@ -109,7 +124,8 @@ object InfoFlowPlugins {
 
       val augInAgrees = InfoFlowContext.getInAgreements(logika).get
 
-      val flowChecks: ISZ[FlowCheckType] = infoFlows.values.map((m: InfoFlow) => ((m.label.value, m.label.posOpt, m.outAgrees)))
+      val flowChecks: ISZ[FlowCheckType] = infoFlows.values.map((m: FlowElement) =>
+        FlowCheckType(m.flowCase.label.value, m.kind, m.flowCase.label.posOpt, m.flowCase.outAgrees))
       val ss2: ISZ[State] = InfoFlowUtil.checkInfoFlowAgreements(augInAgrees, flowChecks, "Post Flow: ", methodPosOpt.get,
         logika, smt2, cache, reporter, ss)
 
@@ -122,7 +138,7 @@ object InfoFlowPlugins {
 
     method.mcontract match {
       case contract: AST.MethodContract.Simple =>
-        checkCase(None(), contract.reads, contract.requires, contract.modifies, contract.ensures, contract.infoFlows)
+        checkInfoFlows(None(), contract.reads, contract.requires, contract.modifies, contract.ensures, contract.infoFlows)
       case contract: AST.MethodContract.Cases =>
         halt("Infeasible until Cases include InfoFlows")
     }
@@ -174,14 +190,17 @@ object InfoFlowAssumeAgreeStmtPlugin {
 
               infoFlows.get(e.channel.value) match {
                 case Some(infoFlow) =>
-                  val requiresClause: AST.MethodContract.Claims = if (e.requires.nonEmpty) e.requiresClause else infoFlow.requiresClause
-                  val inAgreesClause: AST.MethodContract.Claims = if (e.inAgrees.nonEmpty) e.inAgreeClause else infoFlow.inAgreeClause
-                  val flow: InfoFlowsType = HashMap.empty[String, InfoFlow] + e.channel.value ~>
-                    InfoFlow(
-                      label = e.channel,
-                      requiresClause = requiresClause,
-                      inAgreeClause = inAgreesClause,
-                      outAgreeClause = AST.MethodContract.Claims.empty)
+                  val requiresClause: AST.MethodContract.Claims = if (e.requires.nonEmpty) e.requiresClause else infoFlow.flowCase.requiresClause
+                  val inAgreesClause: AST.MethodContract.Claims = if (e.inAgrees.nonEmpty) e.inAgreeClause else infoFlow.flowCase.inAgreeClause
+                  val flow: InfoFlowsType = HashMap.empty[String, FlowElement] + e.channel.value ~>
+                    FlowElement(
+                      InfoFlowCase(
+                        label = e.channel,
+                        requiresClause = requiresClause,
+                        inAgreeClause = inAgreesClause,
+                        outAgreeClause = AST.MethodContract.Claims.empty),
+                      infoFlow.kind
+                    )
 
                   val stateSyms = InfoFlowUtil.captureAgreementValues(flow, T, logika, smt2, cache, reporter, s)
                   s = InfoFlowUtil.addInAgreeClaims(stateSyms._2, stateSyms._1)
@@ -244,9 +263,9 @@ object InfoFlowAssertAgreeStmtPlugin {
             case AST.Sequent(ISZ(), e: AST.Exp.AssertAgree, ISZ()) =>
               infoFlows.get(e.channel.value) match {
                 case Some(infoFlow) =>
-                  val outAgrees: ISZ[Exp] = if (e.outAgrees.nonEmpty) e.outAgrees else infoFlow.outAgrees
+                  val outAgrees: ISZ[Exp] = if (e.outAgrees.nonEmpty) e.outAgrees else infoFlow.flowCase.outAgrees
                   r = InfoFlowUtil.checkInfoFlowAgreements(
-                    inAgrees, ISZ((e.channel.value, e.channel.posOpt, outAgrees)), "Inline Flow Assert Agreement: ", stmt.posOpt.get,
+                    inAgrees, ISZ(FlowCheckType(e.channel.value, infoFlow.kind, e.channel.posOpt, outAgrees)), "Inline Flow Assert Agreement: ", stmt.posOpt.get,
                     logika, smt2, cache, reporter, r)
                 case _ =>
                   reporter.error(e.channel.posOpt, name, s"'${e.channel.value}' is not an existing channel")
@@ -309,13 +328,14 @@ object InfoFlowLoopStmtPlugin {
 
             val methodInAgreements = InfoFlowContext.getInAgreements(logika).get
 
-            val invariantFlows: InfoFlowsType = HashMap.empty[String, InfoFlow] ++ flowInvariant.flowInvariants.map((m: InfoFlow) => ((m.label.value, m)))
+            val invariantFlows: InfoFlowsType = HashMap.empty[String, FlowElement] ++ flowInvariant.flowInvariants.map((m: InfoFlowCase) =>
+              ((m.label.value, FlowElement(m, FlowKind.Case))))
 
-            val loopPartitionsToCheck: ISZ[FlowCheckType] = invariantFlows.values.map((m: InfoFlow) => {
-              if (!methodInAgreements.contains(m.label.value)) {
-                reporter.error(m.label.posOpt, name, s"'${m.label.value}' is not an existing channel'")
+            val loopPartitionsToCheck: ISZ[FlowCheckType] = invariantFlows.values.map((m: FlowElement) => {
+              if (!methodInAgreements.contains(m.flowCase.label.value)) {
+                reporter.error(m.flowCase.label.posOpt, name, s"'${m.flowCase.label.value}' is not an existing channel'")
               }
-              ((m.label.value, m.label.posOpt, m.inAgrees ++ m.outAgrees))
+              FlowCheckType(m.flowCase.label.value, m.kind, m.flowCase.label.posOpt, m.flowCase.inAgrees ++ m.flowCase.outAgrees)
             })
 
             if (reporter.hasError) {
@@ -502,7 +522,7 @@ object InfoFlowLoopStmtPlugin {
     data match {
       case i: InfoFlowContext.InfoFlowImplicationAgree =>
         val mlhs: ISZ[State.Value.Sym] = for (sym <- i.lhs) yield rw.transformStateValueSym(sym).get
-        val mrhs: ISZ[State.Value.Sym] = for(sym <- i.rhs) yield rw.transformStateValueSym(sym).get
+        val mrhs: ISZ[State.Value.Sym] = for (sym <- i.rhs) yield rw.transformStateValueSym(sym).get
         return MSome(i(lhs = mlhs, rhs = mrhs))
       case i: InfoFlowContext.InfoFlowAgreeSym => return MSome(i(sym = rw.transformStateValueSym(i.sym).get))
       case _ => halt("Infeasible")

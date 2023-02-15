@@ -16,7 +16,7 @@ import LogikaInfoFlowTests._
 class LogikaInfoFlowTests extends SireumRcSpec {
 
   def shouldIgnore(name: Predef.String): B = {
-    //name != "channel_buffer.sc"
+    //!ops.StringOps(name).contains("FlowGroup-FAIL")
     false
   }
 

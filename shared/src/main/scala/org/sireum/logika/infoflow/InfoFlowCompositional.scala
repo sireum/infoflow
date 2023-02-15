@@ -6,7 +6,7 @@ import org.sireum._
 import org.sireum.lang.symbol.Info
 import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
-import org.sireum.logika.infoflow.InfoFlowContext.InfoFlowsType
+import org.sireum.logika.infoflow.InfoFlowContext.{FlowElement, FlowKind, InfoFlowsType}
 import org.sireum.logika.{Context, Logika, Smt2, State, Util}
 import org.sireum.message.Position
 
@@ -43,10 +43,11 @@ object InfoFlowCompositional {
     val contract = info.contract
     val isUnit = info.sig.returnType.typedOpt == AST.Typed.unitOpt
 
-    val infoFlows: AST.MethodContract.InfoFlows = contract match {
-      case AST.MethodContract.Simple(accesses, claims, accesses1, claims1, flows, attr) => flows
-      case _ => AST.MethodContract.InfoFlows.empty
-    }
+    val (infoFlows, reads, modifies): (AST.MethodContract.InfoFlows, AST.MethodContract.Accesses, AST.MethodContract.Accesses) =
+      contract match {
+        case AST.MethodContract.Simple(reads, requires, modifies, ensures, flows, attr) => (flows, reads, modifies)
+        case _ => (AST.MethodContract.InfoFlows.empty, AST.MethodContract.Accesses.empty, AST.MethodContract.Accesses.empty)
+      }
 
     val receiverPosOpt: Option[Position] =
       if (invokeReceiverOpt.nonEmpty) invokeReceiverOpt.get.posOpt
@@ -267,16 +268,35 @@ object InfoFlowCompositional {
       }
 
       // capture in agreement values
-      var inAgreements: InfoFlowsType = HashMap.empty[String, AST.MethodContract.InfoFlow]
-      for (infoFlow <- infoFlows.flows) {
-        if (inAgreements.contains(infoFlow.label.value)) {
-          reporter.error(infoFlow.label.posOpt, "Info Flow Compositional Plugin", "Flow case channels must be unique")
+      var inAgreements: InfoFlowsType = HashMap.empty[String, FlowElement]
+      val pluginName = "Info Flow Compositional Plugin"
+      for (infoFlowElem <- infoFlows.flows) {
+        infoFlowElem match {
+          case infoFlow: AST.MethodContract.InfoFlowCase =>
+            if (inAgreements.contains(infoFlow.label.value)) {
+              reporter.error(infoFlow.label.posOpt, pluginName, "Flow case channels must be unique")
+            }
+
+            assert(infoFlow.requires.isEmpty, "TODO")
+
+            val modInfoFlow = infoFlow(inAgreeClause = infoFlow.inAgreeClause(claims = infoFlow.inAgrees.map((e: AST.Exp) => AST.Util.substExp(e, typeSubstMap))))
+            inAgreements = inAgreements + infoFlow.label.value ~> FlowElement(modInfoFlow, FlowKind.Case)
+
+          case infoFlow: AST.MethodContract.InfoFlowFlow =>
+            val flowCase = InfoFlowUtil.translateToFlowCase(infoFlow)
+            if (inAgreements.contains(flowCase.label.value)) {
+              reporter.error(flowCase.label.posOpt, pluginName, "Flows channels must be unique")
+            }
+            inAgreements = inAgreements + flowCase.label.value ~> FlowElement(flowCase, FlowKind.Flow)
+
+          case infoFlow: AST.MethodContract.InfoFlowGroup =>
+            val flows = InfoFlowUtil.translateToFlows(infoFlow, reads.refs, modifies.refs)
+            val flowCase = InfoFlowUtil.translateToFlowCase(flows)
+            if (inAgreements.contains(flowCase.label.value)) {
+              reporter.error(flowCase.label.posOpt, pluginName, "Group labels must be unique")
+            }
+            inAgreements = inAgreements + flowCase.label.value ~> FlowElement(flowCase, FlowKind.Group)
         }
-
-        assert(infoFlow.requires.isEmpty, "TODO")
-
-        val modInfoFlow = infoFlow(inAgreeClause = infoFlow.inAgreeClause(claims = infoFlow.inAgrees.map((e: AST.Exp) => AST.Util.substExp(e, typeSubstMap))))
-        inAgreements = inAgreements + infoFlow.label.value ~> modInfoFlow
       }
       val stateSyms = InfoFlowUtil.captureAgreementValues(inAgreements, T, logikaComp, smt2, cache, reporter, cs2)
       val cs3 = stateSyms._1
@@ -319,10 +339,24 @@ object InfoFlowCompositional {
       val cs15 = cs14.addClaim(State.Claim.Let.And(rsym, requireSyms))
 
       // capture out agreement values
-      var outAgreements: InfoFlowsType = HashMap.empty[String, AST.MethodContract.InfoFlow]
-      for (infoFlow <- infoFlows.flows) {
-        val modInfoFlow = infoFlow(outAgreeClause = infoFlow.outAgreeClause(claims = infoFlow.outAgrees.map((e: AST.Exp) => AST.Util.substExp(e, typeSubstMap))))
-        outAgreements = outAgreements + infoFlow.label.value ~> modInfoFlow
+      var outAgreements: InfoFlowsType = HashMap.empty[String, FlowElement]
+      for (infoFlowElement <- infoFlows.flows) {
+        infoFlowElement match {
+          case infoFlowCase: AST.MethodContract.InfoFlowCase =>
+            val modInfoFlow = infoFlowCase(outAgreeClause = infoFlowCase.outAgreeClause(claims = infoFlowCase.outAgrees.map((e: AST.Exp) => AST.Util.substExp(e, typeSubstMap))))
+            outAgreements = outAgreements + infoFlowCase.label.value ~> FlowElement(modInfoFlow, FlowKind.Case)
+
+          case infoFlow: AST.MethodContract.InfoFlowFlow =>
+            val flowCase = InfoFlowUtil.translateToFlowCase(infoFlow)
+            val modInfoFlow = flowCase(outAgreeClause = flowCase.outAgreeClause(claims = flowCase.outAgrees.map((e: AST.Exp) => AST.Util.substExp(e, typeSubstMap))))
+            outAgreements = outAgreements + infoFlow.label.value ~> FlowElement(modInfoFlow, FlowKind.Flow)
+
+          case infoFlowGroup: AST.MethodContract.InfoFlowGroup =>
+            val flow = InfoFlowUtil.translateToFlows(infoFlowGroup, reads.refs, modifies.refs)
+            val flowCase = InfoFlowUtil.translateToFlowCase(flow)
+            val modInfoFlow = flowCase(outAgreeClause = flowCase.outAgreeClause(claims = flowCase.outAgrees.map((e: AST.Exp) => AST.Util.substExp(e, typeSubstMap))))
+            outAgreements = outAgreements + flowCase.label.value ~> FlowElement(modInfoFlow, FlowKind.Flow)
+        }
       }
       val outStateSyms = InfoFlowUtil.captureAgreementValues(outAgreements, F, logikaComp, smt2, cache, reporter, cs15)
       val cs16 = outStateSyms._1

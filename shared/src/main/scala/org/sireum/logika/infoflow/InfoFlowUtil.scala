@@ -2,6 +2,7 @@
 package org.sireum.logika.infoflow
 
 import org.sireum._
+import org.sireum.lang.ast.MethodContract
 import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
@@ -46,9 +47,9 @@ object InfoFlowUtil {
                         logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): State = {
     var s = state
     for (infoFlow <- invariantFlows.values;
-         exp <- infoFlow.outAgrees) {
+         exp <- infoFlow.flowCase.outAgrees) {
       val (s1, r) = InfoFlowUtil.intro(exp, s, logika, smt2, cache, reporter)
-      s = s1.addClaim(State.Claim.Custom(InfoFlowAgreeSym(r, infoFlow.label.value)))
+      s = s1.addClaim(State.Claim.Custom(InfoFlowAgreeSym(r, infoFlow.flowCase.label.value)))
     }
     return s
   }
@@ -74,7 +75,7 @@ object InfoFlowUtil {
     for (infoFlow <- infoFlows.values if s.ok) {
       var reqSyms: ISZ[State.Value.Sym] = ISZ()
       if (captureInAgreements) {
-        for (req <- infoFlow.requires) {
+        for (req <- infoFlow.flowCase.requires) {
           val (s1, r) = intro(req, s, logika, smt2, cache, reporter)
           s = s1
           reqSyms = reqSyms :+ r
@@ -82,16 +83,14 @@ object InfoFlowUtil {
       }
 
       var inSyms: ISZ[State.Value.Sym] = ISZ()
-      val agreements: ISZ[AST.Exp] = if (captureInAgreements) infoFlow.inAgrees else infoFlow.outAgrees
+      val agreements: ISZ[AST.Exp] = if (captureInAgreements) infoFlow.flowCase.inAgrees else infoFlow.flowCase.outAgrees
       for (inExp <- agreements) {
         val (s1, r) = intro(inExp, s, logika, smt2, cache, reporter)
         s = s1
         inSyms = inSyms :+ r
       }
 
-      if (reqSyms.nonEmpty || inSyms.nonEmpty) {
-        assumeContexts = assumeContexts + (infoFlow.label.value ~> AssumeContext(reqSyms, inSyms))
-      }
+      assumeContexts = assumeContexts + (infoFlow.flowCase.label.value ~> AssumeContext(reqSyms, inSyms))
     }
     return (s, assumeContexts)
   }
@@ -105,10 +104,10 @@ object InfoFlowUtil {
     if (flowContexts.nonEmpty) {
       var r: ISZ[State] = ISZ()
       for (flowCheck <- flowChecks) {
-        val channel = flowCheck._1
+        val channel = flowCheck.channel
         val flowContext = flowContexts.get(channel).get
-        val outAgrees = flowCheck._3
-        val pos: Position = if (flowCheck._2.nonEmpty) flowCheck._2.get else altPos
+        val outAgrees = flowCheck.exps
+        val pos: Position = if (flowCheck.optPos.nonEmpty) flowCheck.optPos.get else altPos
 
         for (state <- states) {
           if (state.status == State.Status.Error) {
@@ -219,18 +218,24 @@ object InfoFlowUtil {
             val sym = bstack.pop.get._1
             val conclusion = State.Claim.Prop(T, sym)
 
+
+            val kind: String = flowCheck.kind match {
+              case FlowKind.Case => "flow case"
+              case FlowKind.Flow => "flow"
+              case FlowKind.Group => "flow group"
+            }
+
             val validity = smt2.valid(context = logika.context.methodName, cache = cache, reportQuery = T,
               log = logika.config.logVc, logDirOpt = logika.config.logVcDirOpt,
-              title = s"${title}Flow case $channel at [${pos.beginLine}, ${pos.endLine}]", pos = pos,
+              title = s"${title}$kind $channel at [${pos.beginLine}, ${pos.endLine}]", pos = pos,
               premises = s.claims, conclusion = conclusion, reporter = reporter)
-
             var ok = F
             validity.kind match {
               case Smt2Query.Result.Kind.Unsat => ok = T
-              case Smt2Query.Result.Kind.Sat => logika.error(Some(pos), s"${title}Flow case $channel violation", reporter)
-              case Smt2Query.Result.Kind.Unknown => logika.error(Some(pos), s"${title}Could not verify flow case $channel", reporter)
-              case Smt2Query.Result.Kind.Timeout => logika.error(Some(pos), s"${title}Timed out while checking flow case $channel", reporter)
-              case Smt2Query.Result.Kind.Error => logika.error(Some(pos), s"${title}Error encountered when checking flow case $channel\n${validity.info}", reporter)
+              case Smt2Query.Result.Kind.Sat => logika.error(Some(pos), s"${title}$kind $channel violation", reporter)
+              case Smt2Query.Result.Kind.Unknown => logika.error(Some(pos), s"${title}Could not verify $kind $channel", reporter)
+              case Smt2Query.Result.Kind.Timeout => logika.error(Some(pos), s"${title}Timed out while checking $kind $channel", reporter)
+              case Smt2Query.Result.Kind.Error => logika.error(Some(pos), s"${title}Error encountered when checking $kind $channel\n${validity.info}", reporter)
             }
 
             r = r :+ (if (ok) state else state(status = State.Status.Error))
@@ -241,5 +246,49 @@ object InfoFlowUtil {
     } else {
       return states
     }
+  }
+
+  def translateToFlowCase(infoFlow: MethodContract.InfoFlowFlow): MethodContract.InfoFlowCase = {
+    return MethodContract.InfoFlowCase(
+      label = infoFlow.label,
+      requiresClause = MethodContract.Claims.empty,
+      inAgreeClause = infoFlow.fromClause,
+      outAgreeClause = infoFlow.toClause)
+  }
+
+  def translateToFlows(infoFlow: MethodContract.InfoFlowGroup,
+                       reads: ISZ[AST.Exp.Ref],
+                       modifies: ISZ[AST.Exp.Ref]): MethodContract.InfoFlowFlow = {
+    var fromClause = MethodContract.Claims.empty
+    var toClause = MethodContract.Claims.empty
+    if (reads.nonEmpty && modifies.nonEmpty) {
+      var froms = ISZ[AST.Exp]()
+      var tos = ISZ[AST.Exp]()
+
+      val r = ops.ISZOps(reads)
+      val m = ops.ISZOps(modifies)
+      for (member <- infoFlow.members) {
+        member match {
+          case ref: AST.Exp.Ref =>
+            if (r.contains(ref)) {
+              froms = froms :+ member
+            }
+            if (m.contains(ref)) {
+              tos = tos :+ member
+            }
+          case _ =>
+        }
+      }
+      fromClause = MethodContract.Claims(claims = froms, attr = infoFlow.membersClause.attr)
+      toClause = MethodContract.Claims(claims = tos, attr = infoFlow.membersClause.attr)
+    } else {
+      fromClause = infoFlow.membersClause
+      toClause = infoFlow.membersClause
+    }
+    return MethodContract.InfoFlowFlow(
+      label = infoFlow.label,
+      fromClause = fromClause,
+      toClause = toClause
+    )
   }
 }
