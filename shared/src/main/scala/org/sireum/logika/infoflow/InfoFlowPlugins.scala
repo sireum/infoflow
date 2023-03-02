@@ -350,7 +350,7 @@ object InfoFlowLoopStmtPlugin {
                     val srw2 = Util.assumeValueInv(logika, smt2, cache, rtCheck, srw1, sym, pos, reporter)
                     srw = srw2.addClaim(State.Claim.Let.CurrentName(sym, res.owner :+ res.id, Some(pos)))
                   }
-                  val (receiverModified, modLocalVars) = whileStmt.contract.modifiedLocalVars(logika.context.receiverLocalTypeOpt)
+                  val (receiverModified, modLocalVars) = whileStmt.contract.modifiedLocalVars(logika.context.receiverLocalTypeOpt, HashMap.empty)
                   val receiverOpt: Option[State.Value.Sym] = if (receiverModified) {
                     val (srw3, sym) = Util.idIntro(whileStmt.posOpt.get, srw, logika.context.methodName, "this",
                       logika.context.receiverLocalTypeOpt.get._2, None())

@@ -123,7 +123,7 @@ object InfoFlowCompositional {
         localInMap = localInMap))))
     }
 
-    val (receiverModified, modLocals) = contract.modifiedLocalVars(lComp.context.receiverLocalTypeOpt)
+    val (receiverModified, modLocals) = contract.modifiedLocalVars(lComp.context.receiverLocalTypeOpt, typeSubstMap)
 
     def evalContractCase(logikaComp: Logika, callerReceiverOpt: Option[State.Value.Sym], assume: B, cs0: State,
                          labelOpt: Option[AST.Exp.LitString], requires: ISZ[AST.Exp],
