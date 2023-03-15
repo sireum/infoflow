@@ -56,10 +56,11 @@ object InfoFlowUtil {
 
   def intro(exp: AST.Exp, state: State,
             logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): (State, State.Value.Sym) = {
-    logika.singleStateValue(logika.evalExp(Split.Disabled, smt2, cache, F, state, exp, reporter)) match {
+    val pos = exp.posOpt.get
+    logika.singleStateValue(pos, state, logika.evalExp(Split.Disabled, smt2, cache, F, state, exp, reporter)) match {
       case (s, v: State.Value.Sym) => return (s, v)
       case (s, v) =>
-        val (s1, sym) = s.freshSym(v.tipe, exp.posOpt.get)
+        val (s1, sym) = s.freshSym(v.tipe, pos)
         return (s1.addClaim(State.Claim.Let.Def(sym, v)), sym)
     }
   }
