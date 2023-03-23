@@ -3,6 +3,8 @@ package org.sireum.logika.infoflow
 
 import org.sireum._
 import org.sireum.lang.ast.MethodContract
+import org.sireum.lang.symbol.Info
+import org.sireum.lang.symbol.Resolver.NameMap
 import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
 import org.sireum.logika.State.Claim
@@ -15,21 +17,38 @@ object InfoFlowUtil {
 
   val secondTraceSuffix: String = "~"
 
-  @datatype class SymValueRewriter(val lastSymNum: Z) extends StateTransformer.PrePost[Z] {
-    override def preStateValueSym(maxSym: Z,
-                                  o: State.Value.Sym): StateTransformer.PreResult[Z, State.Value] = {
+  // context returns the max sym value and any new entries that need to be added to the name map in type hierarchy
+  type SVRContext = (Z, NameMap, ISZ[(ISZ[String], Info)])
+
+  @datatype class SymValueRewriter(val lastSymNum: Z) extends StateTransformer.PrePost[SVRContext] {
+
+    override def preStateValueSym(ctx: SVRContext, o: State.Value.Sym): StateTransformer.PreResult[SVRContext, State.Value] = {
       val r = o.num + lastSymNum
-      val _maxSym: Z = if (r > maxSym) r else maxSym
+      val _maxSym: Z = if (r > ctx._1) r else ctx._1
 
-      return StateTransformer.PreResult(_maxSym, T, Some(o(num = r)))
+      return StateTransformer.PreResult((_maxSym, ctx._2, ctx._3), T, Some(o(num = r)))
     }
 
-    override def preStateClaimLetCurrentId(ctx: Z, o: Let.CurrentId): StateTransformer.PreResult[Z, Claim.Let] = {
+    override def preStateClaimLetCurrentId(ctx: SVRContext, o: Let.CurrentId): StateTransformer.PreResult[SVRContext, Claim.Let] = {
       return StateTransformer.PreResult(ctx, T, Some(o(id = s"${o.id}${secondTraceSuffix}")))
     }
 
-    override def preStateClaimLetId(ctx: Z, o: Let.Id): StateTransformer.PreResult[Z, Claim.Let] = {
+    override def preStateClaimLetId(ctx: SVRContext, o: Let.Id): StateTransformer.PreResult[SVRContext, Claim.Let] = {
       return StateTransformer.PreResult(ctx, T, Some(o(id = s"${o.id}${secondTraceSuffix}")))
+    }
+
+    override def preStateClaimLetName(ctx: SVRContext, o: Let.Name): StateTransformer.PreResult[SVRContext, Claim.Let] = {
+      val izops = ops.ISZOps(o.ids)
+      val ids = izops.dropRight(1) :+ s"${izops.last}${secondTraceSuffix}"
+      val newNameEntry = ids ~> ctx._2.get(o.ids).get // just reuse the info from the actual global
+      return StateTransformer.PreResult((ctx._1, ctx._2, ctx._3 :+ newNameEntry), T, Some(o(ids = ids)))
+    }
+
+    override def preStateClaimLetCurrentName(ctx: SVRContext, o: Let.CurrentName): StateTransformer.PreResult[SVRContext, Claim.Let] = {
+      val izops = ops.ISZOps(o.ids)
+      val ids = izops.dropRight(1) :+ s"${izops.last}${secondTraceSuffix}"
+      val newNameEntry = ids ~> ctx._2.get(o.ids).get // just reuse the info from the actual global
+      return StateTransformer.PreResult((ctx._1, ctx._2, ctx._3 :+ newNameEntry), T, Some(o(ids = ids)))
     }
   }
 
@@ -145,11 +164,15 @@ object InfoFlowUtil {
 
             // create 2nd trace
             {
-              val rewriter = StateTransformer[Z](SymValueRewriter(lastSymNum))
-              val result = rewriter.transformState(lastSymNum, s)
+              val rewriter = StateTransformer[SVRContext](SymValueRewriter(lastSymNum))
+              val result = rewriter.transformState((lastSymNum, smt2.typeHierarchy.nameMap, ISZ[(ISZ[String], Info)]()), s)
+
+              for (entry <- result.ctx._3) {
+                smt2.typeHierarchyNamesUp(entry)
+              }
 
               val secondTraceClaims = result.resultOpt.get.claims
-              s = s(claims = s.claims ++ secondTraceClaims, nextFresh = result.ctx + 1)
+              s = s(claims = s.claims ++ secondTraceClaims, nextFresh = result.ctx._1 + 1)
             }
 
             // add requirement claims
@@ -195,14 +218,21 @@ object InfoFlowUtil {
 
             // add out agreements claims
             var bstack: Stack[State.Value.Sym] = Stack.empty
-            for (outSym <- outSyms) {
-              val (s1, sym) = s.freshSym(AST.Typed.b, pos)
-              s = s1
-              bstack = bstack.push(sym)
+            if (outSyms.nonEmpty) {
+              for (outSym <- outSyms) {
+                val (s1, sym) = s.freshSym(AST.Typed.b, pos)
+                s = s1
+                bstack = bstack.push(sym)
 
-              val secOutSym = outSym(num = outSym.num + lastSymNum)
-              val claim = State.Claim.Let.Binary(sym, outSym, AST.Exp.BinaryOp.Eq, secOutSym, secOutSym.tipe)
-              s = s.addClaim(claim)
+                val secOutSym = outSym(num = outSym.num + lastSymNum)
+                val claim = State.Claim.Let.Binary(sym, outSym, AST.Exp.BinaryOp.Eq, secOutSym, secOutSym.tipe)
+                s = s.addClaim(claim)
+              }
+            } else {
+              // no out agreements so just conclude T
+              val (s1, sym) = s.freshSym(AST.Typed.b, pos)
+              s = s1.addClaim(State.Claim.Let.Def(sym, State.Value.B(T, pos)))
+              bstack = bstack.push(sym)
             }
 
             while (bstack.size > 1) {
@@ -216,7 +246,8 @@ object InfoFlowUtil {
               s = s.addClaim(claim)
             }
 
-            val sym = bstack.pop.get._1
+            val sym: State.Value.Sym = bstack.pop.get._1
+
             val conclusion = State.Claim.Prop(T, sym)
 
 
