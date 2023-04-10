@@ -74,7 +74,8 @@ object InfoFlowPlugins {
         }
         val p = Util.updateInVarMaps(Util.logikaMethod(th, mconfig, res.owner, method.sig.id.value, receiverTypeOpt, method.sig.paramIdTypes,
           method.sig.returnType.typedOpt.get, methodPosOpt, reads, requires, modifies, ensures,
-          if (labelOpt.isEmpty) ISZ() else ISZ(labelOpt.get), plugins, None(), ISZ()), smt2, cache, state, reporter)
+          if (labelOpt.isEmpty) ISZ() else ISZ(labelOpt.get), plugins, None(), ISZ()), method.isHelper, smt2, cache,
+          state, reporter)
         state = p._2
         p._1
       }
