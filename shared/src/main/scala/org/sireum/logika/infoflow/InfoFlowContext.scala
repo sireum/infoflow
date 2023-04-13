@@ -48,9 +48,7 @@ object InfoFlowContext {
 
     def toSTs(claimSTs: Util.ClaimSTs, numMap: Util.NumMap, defs: HashMap[Z, ISZ[State.Claim.Let]]): Unit = {}
 
-    @pure def types: ISZ[Typed] = {
-      return ISZ()
-    }
+    @strictpure def types: ISZ[Typed] = ISZ()
   }
 
   @datatype class InfoFlowAgreeSym(val sym: State.Value.Sym,
@@ -61,9 +59,7 @@ object InfoFlowContext {
 
     def toSTs(claimSTs: Util.ClaimSTs, numMap: Util.NumMap, defs: HashMap[Z, ISZ[State.Claim.Let]]): Unit = {}
 
-    @pure def types: ISZ[Typed] = {
-      return ISZ()
-    }
+    @strictpure def types: ISZ[Typed] = ISZ()
   }
 
   @datatype class InAgreementValue(val inAgreements: AssumeContextType) extends Context.Value
