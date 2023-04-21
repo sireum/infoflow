@@ -63,7 +63,7 @@ object InfoFlowUtil {
   }
 
   def addOutAgreeClaims(state: State, invariantFlows: InfoFlowsType,
-                        logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): State = {
+                        logika: Logika, smt2: Smt2, cache: Logika.Cache, reporter: Reporter): State = {
     var s = state
     for (infoFlow <- invariantFlows.values;
          exp <- infoFlow.flowCase.outAgrees) {
@@ -74,7 +74,7 @@ object InfoFlowUtil {
   }
 
   def intro(exp: AST.Exp, state: State,
-            logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter): (State, State.Value.Sym) = {
+            logika: Logika, smt2: Smt2, cache: Logika.Cache, reporter: Reporter): (State, State.Value.Sym) = {
     val pos = exp.posOpt.get
     logika.singleStateValue(pos, state, logika.evalExp(Split.Disabled, smt2, cache, F, state, exp, reporter)) match {
       case (s, v: State.Value.Sym) => return (s, v)
@@ -86,7 +86,7 @@ object InfoFlowUtil {
 
 
   def captureAgreementValues(infoFlows: InfoFlowsType, captureInAgreements: B,
-                             logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, state: State): (State, AssumeContextType) = {
+                             logika: Logika, smt2: Smt2, cache: Logika.Cache, reporter: Reporter, state: State): (State, AssumeContextType) = {
     var s = state
     var assumeContexts: AssumeContextType = HashMap.empty
 
@@ -119,7 +119,7 @@ object InfoFlowUtil {
                               flowChecks: ISZ[FlowCheckType],
                               title: String,
                               altPos: Position,
-                              logika: Logika, smt2: Smt2, cache: Smt2.Cache, reporter: Reporter, states: ISZ[State]): ISZ[State] = {
+                              logika: Logika, smt2: Smt2, cache: Logika.Cache, reporter: Reporter, states: ISZ[State]): ISZ[State] = {
 
     if (flowContexts.nonEmpty) {
       var r: ISZ[State] = ISZ()

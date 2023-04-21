@@ -23,7 +23,7 @@ object InfoFlowCompositional {
 
   def handleCompositional(logika: Logika,
                           smt2: Smt2,
-                          cache: Smt2.Cache,
+                          cache: Logika.Cache,
                           rtCheck: B,
                           split: Split.Type,
                           posOpt: Option[message.Position],

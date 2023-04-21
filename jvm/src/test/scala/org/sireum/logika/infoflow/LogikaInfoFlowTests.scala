@@ -66,7 +66,7 @@ class LogikaInfoFlowTests extends SireumRcSpec {
       th => Smt2Impl.create(c.smt2Configs, ISZ(), th, c.timeoutInMs, c.fpRoundingMode, c.charBitWidth,
         c.intBitWidth, c.useReal, c.simplifiedQuery, c.smt2Seq, c.rawInscription, c.elideEncoding, c.atLinesFresh,
         reporter),
-      Smt2.NoCache(), reporter, T, Logika.defaultPlugins ++ InfoFlowPlugins.defaultPlugins, 0, ISZ(), ISZ())
+      Logika.NoSmt2Cache.create, reporter, T, Logika.defaultPlugins ++ InfoFlowPlugins.defaultPlugins, 0, ISZ(), ISZ())
     reporter.printMessages()
     val name = f.name.value
     if (name.contains(failSuffix)) {

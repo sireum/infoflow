@@ -48,7 +48,7 @@ object InfoFlowPlugins {
                    caseIndex: Z,
                    config: Config,
                    smt2: Smt2,
-                   cache: Smt2.Cache,
+                   cache: Logika.Cache,
                    reporter: Reporter): B = {
 
     val mconfig: Config = if (caseIndex >= 0) config(checkInfeasiblePatternMatch = F) else config
@@ -147,7 +147,7 @@ object InfoFlowPlugins {
     return T
   }
 
-  def handleCompositional(logika: Logika, smt2: Smt2, cache: Smt2.Cache, rtCheck: B, split: Split.Type,
+  def handleCompositional(logika: Logika, smt2: Smt2, cache: Logika.Cache, rtCheck: B, split: Split.Type,
                           posOpt: Option[message.Position], info: Context.InvokeMethodInfo,
                           state: State, typeSubstMap: HashMap[String, AST.Typed], retType: AST.Typed,
                           invokeReceiverOpt: Option[AST.Exp], receiverOpt: Option[State.Value.Sym],
@@ -177,7 +177,7 @@ object InfoFlowAssumeAgreeStmtPlugin {
       Transformer(InfoFlowAssumeAgreeStmtPlugin.AssumeAgreeCheck()).transformStmt(F, stmt).ctx
   }
 
-  def handle(logika: Logika, smt2: Smt2, cache: Smt2.Cache, state: State, stmt: Stmt, reporter: Reporter): ISZ[State] = {
+  def handle(logika: Logika, smt2: Smt2, cache: Logika.Cache, state: State, stmt: Stmt, reporter: Reporter): ISZ[State] = {
 
     var s = state
     // TODO: probably should only allow one AgreeAssume per Deduce block
@@ -249,7 +249,7 @@ object InfoFlowAssertAgreeStmtPlugin {
 
   @pure def handle(logika: Logika,
                    smt2: Smt2,
-                   cache: Smt2.Cache,
+                   cache: Logika.Cache,
                    state: State,
                    stmt: AST.Stmt,
                    reporter: Reporter): ISZ[State] = {
@@ -314,7 +314,7 @@ object InfoFlowLoopStmtPlugin {
     }
   }
 
-  @pure def handle(logikax: Logika, smt2: Smt2, cache: Smt2.Cache, s0: State, stmt: Stmt, reporter: Reporter): ISZ[State] = {
+  @pure def handle(logikax: Logika, smt2: Smt2, cache: Logika.Cache, s0: State, stmt: Stmt, reporter: Reporter): ISZ[State] = {
     stmt match {
       case whileStmt: AST.Stmt.While =>
         InfoFlowLoopStmtPlugin.getFlowLoopInvariants(whileStmt.invariants) match {
