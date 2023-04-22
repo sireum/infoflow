@@ -5,7 +5,7 @@ import org.sireum._
 import org.sireum.lang.ast.Exp.InfoFlowInvariant
 import org.sireum.lang.ast.MethodContract.InfoFlowCase
 import org.sireum.lang.ast.{Exp, Stmt, Transformer}
-import org.sireum.lang.symbol.TypeInfo
+import org.sireum.lang.symbol.{Info, TypeInfo}
 import org.sireum.lang.tipe.TypeHierarchy
 import org.sireum.lang.{ast => AST}
 import org.sireum.logika.Logika.{Reporter, Split}
@@ -72,14 +72,15 @@ object InfoFlowPlugins {
             case _ => halt("Infeasible")
           }
         }
-        val p = Util.updateInVarMaps(Util.logikaMethod(th, mconfig, res.owner, method.sig.id.value, receiverTypeOpt, method.sig.paramIdTypes,
-          method.sig.returnType.typedOpt.get, methodPosOpt, reads, requires, modifies, ensures,
+        val p = Util.updateInVarMaps(Util.logikaMethod(th, mconfig, method.isHelper, res.owner, method.sig.id.value,
+          receiverTypeOpt, method.sig.paramIdTypes, method.sig.returnType.typedOpt.get, methodPosOpt, reads, requires,
+          modifies, ensures,
           if (labelOpt.isEmpty) ISZ() else ISZ(labelOpt.get), plugins, None(), ISZ()), method.isHelper, smt2, cache,
           state, reporter)
         state = p._2
         p._1
       }
-      val invs = logika.retrieveInvs(res.owner, res.isInObject)
+      val invs: ISZ[Info.Inv] = if (method.isHelper) ISZ() else logika.retrieveInvs(res.owner, res.isInObject)
       state = Util.checkMethodPre(logika, smt2, cache, reporter, state, methodPosOpt, invs, requires)
 
       var infoFlows: InfoFlowsType = HashMap.empty[String, FlowElement]
