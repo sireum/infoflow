@@ -178,7 +178,8 @@ object InfoFlowAssumeAgreeStmtPlugin {
       Transformer(InfoFlowAssumeAgreeStmtPlugin.AssumeAgreeCheck()).transformStmt(F, stmt).ctx
   }
 
-  def handle(logika: Logika, smt2: Smt2, cache: Logika.Cache, state: State, stmt: Stmt, reporter: Reporter): ISZ[State] = {
+  def handle(logika: Logika, split: Split.Type, smt2: Smt2, cache: Logika.Cache, rtCheck: B, state: State, stmt: Stmt,
+             reporter: Reporter): ISZ[State] = {
 
     var s = state
     // TODO: probably should only allow one AgreeAssume per Deduce block
@@ -249,8 +250,10 @@ object InfoFlowAssertAgreeStmtPlugin {
   }
 
   @pure def handle(logika: Logika,
+                   split: Split.Type,
                    smt2: Smt2,
                    cache: Logika.Cache,
+                   rtCheck: B,
                    state: State,
                    stmt: AST.Stmt,
                    reporter: Reporter): ISZ[State] = {
@@ -315,16 +318,14 @@ object InfoFlowLoopStmtPlugin {
     }
   }
 
-  @pure def handle(logikax: Logika, smt2: Smt2, cache: Logika.Cache, s0: State, stmt: Stmt, reporter: Reporter): ISZ[State] = {
+  @pure def handle(logikax: Logika, split: Split.Type, smt2: Smt2, cache: Logika.Cache, rtCheck: B, s0: State,
+                   stmt: Stmt, reporter: Reporter): ISZ[State] = {
     stmt match {
       case whileStmt: AST.Stmt.While =>
         InfoFlowLoopStmtPlugin.getFlowLoopInvariants(whileStmt.invariants) match {
           case ISZ(flowInvariant: AST.Exp.InfoFlowInvariant) => {
 
             var logika = logikax
-
-            val split = Split.Default // TODO: argument to evalStmt that's lost when calling plugin
-            val rtCheck: B = F // TODO: argument to evalStmt that's lost when calling plugin
 
             var r = ISZ[State]()
 
