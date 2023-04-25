@@ -382,7 +382,7 @@ object InfoFlowLoopStmtPlugin {
                   } else {
                     None()
                   }
-                  srw = Util.rewriteLocalVars(logika, srw, modLocalVars.keys, whileStmt.posOpt, reporter)
+                  srw = Util.rewriteLocalVars(logika, srw, T, modLocalVars.keys, whileStmt.posOpt, reporter)
                   for (p <- modLocalVars.entries) {
                     val (res, (tipe, pos)) = p
                     val (srw4, sym) = Util.idIntro(pos, srw, res.context, res.id, tipe, Some(pos))

@@ -71,7 +71,7 @@ object InfoFlowCompositional {
         oldVars = oldVars + id ~> sym
         s1 = s2
       }
-      s1 = Util.rewriteLocals(s1, ctx, oldVars.keys ++ (if (receiverOpt.isEmpty) ISZ[String]() else ISZ[String]("this")))._1
+      s1 = Util.rewriteLocals(s1, F, ctx, oldVars.keys ++ (if (receiverOpt.isEmpty) ISZ[String]() else ISZ[String]("this")))._1
     }
     for (q <- paramArgs) {
       val (l, _, arg, v) = q
@@ -142,7 +142,7 @@ object InfoFlowCompositional {
           ms1 = ls0
           oldIdMap = oldIdMap + (info.context :+ info.id) ~> sym
         }
-        ms1 = Util.rewriteLocalVars(logikaComp, ms1, modLocals.keys, mposOpt, reporter)
+        ms1 = Util.rewriteLocalVars(logikaComp, ms1, T, modLocals.keys, mposOpt, reporter)
         for (pair <- modLocals.entries) {
           val (info, (t, pos)) = pair
           val oldSym = oldIdMap.get(info.context :+ info.id).get
@@ -192,7 +192,7 @@ object InfoFlowCompositional {
         if (receiverOpt.nonEmpty) {
           rwLocals = rwLocals :+ AST.ResolvedInfo.LocalVar(ctx, AST.ResolvedInfo.LocalVar.Scope.Current, F, T, "this")
         }
-        ms1 = Util.rewriteLocalVars(logikaComp, ms1, rwLocals, modPosOpt, reporter)
+        ms1 = Util.rewriteLocalVars(logikaComp, ms1, F, rwLocals, modPosOpt, reporter)
         if (newVars.nonEmpty) {
           for (q <- paramArgs) {
             val p = q._1
@@ -380,7 +380,7 @@ object InfoFlowCompositional {
           val p = Util.idIntro(posOpt.get, s1, lcontext, "this", currentReceiverType, None())
           s1 = p._1
           if (receiverModified && logika.context.methodName == lcontext) {
-            s1 = Util.rewriteLocal(logika, s1, lcontext, "this", posOpt, reporter)
+            s1 = Util.rewriteLocal(logika, s1, F, lcontext, "this", posOpt, reporter)
           }
           Some(p._2)
         case _ => None()
@@ -467,7 +467,7 @@ object InfoFlowCompositional {
                 }
               }
             }
-            val implies: ISZ[State.Claim] = for (ccr <- okCcrs) yield State.Claim.Imply(ISZ(ccr.requiresClaim,
+            val implies: ISZ[State.Claim] = for (ccr <- okCcrs) yield State.Claim.Imply(T, ISZ(ccr.requiresClaim,
               Util.bigAnd(
                 map.get(ccr.requiresClaim).getOrElse(ISZ()) ++
                   (for (i <- root.claims.size until ccr.state.claims.size) yield ccr.state.claims(i)))
@@ -481,7 +481,7 @@ object InfoFlowCompositional {
               val (s8, sym) = s1.freshSym(retType, pos)
               s1 = s8
               r = r :+ ((s1(nextFresh = nextFresh).addClaims(
-                for (ccr <- okCcrs) yield State.Claim.Imply(ISZ(ccr.requiresClaim,
+                for (ccr <- okCcrs) yield State.Claim.Imply(T, ISZ(ccr.requiresClaim,
                   State.Claim.Let.Def(sym, ccr.retVal)))), sym))
             }
           }
