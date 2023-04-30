@@ -409,7 +409,7 @@ object InfoFlowLoopStmtPlugin {
                     val (s4, cond) = logika.value2Sym(s3, v, pos)
                     val prop = State.Claim.Prop(T, cond)
                     val thenClaims = s4.claims :+ prop
-                    val thenSat = smt2.sat(logika.context.methodName, cache, T, logika.config.logVc,
+                    val thenSat = smt2.sat(logika.context.methodName, logika.config, cache, T, logika.config.logVc,
                       logika.config.logVcDirOpt, s"while-true-branch at [${pos.beginLine}, ${pos.beginColumn}]", pos,
                       thenClaims, reporter)
                     var nextFresh: Z = s4.nextFresh
@@ -447,7 +447,7 @@ object InfoFlowLoopStmtPlugin {
 
                     val elseClaims = _elseClaims
 
-                    val elseSat = smt2.sat(logika.context.methodName, cache, T, logika.config.logVc,
+                    val elseSat = smt2.sat(logika.context.methodName, logika.config, cache, T, logika.config.logVc,
                       logika.config.logVcDirOpt, s"while-false-branch at [${pos.beginLine}, ${pos.beginColumn}]", pos,
                       elseClaims, reporter)
 
@@ -509,7 +509,7 @@ object InfoFlowLoopStmtPlugin {
     halt("Infeasible")
   }
 
-  @pure def handleSmt2(smt2: Smt2, claim: State.Claim, v2st: (State.Value, Reporter) => ST,
+  @pure def handleSmt2(smt2: Smt2, claim: State.Claim, v2st: (Config, State.Value, Reporter) => ST,
                        lets: HashMap[Z, ISZ[Claim.Let]], declIds: HashSMap[(ISZ[String], String, Z), Let.Id],
                        reporter: Reporter): Option[ST] = {
     halt("Infeasible")

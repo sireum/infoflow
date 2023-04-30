@@ -257,8 +257,8 @@ object InfoFlowUtil {
               case FlowKind.Group => "flow group"
             }
 
-            val validity = smt2.valid(context = logika.context.methodName, cache = cache, reportQuery = T,
-              log = logika.config.logVc, logDirOpt = logika.config.logVcDirOpt,
+            val validity = smt2.valid(context = logika.context.methodName, config = logika.config, cache = cache,
+              reportQuery = T, log = logika.config.logVc, logDirOpt = logika.config.logVcDirOpt,
               title = s"${title}$kind $channel at [${pos.beginLine}, ${pos.endLine}]", pos = pos,
               premises = s.claims, conclusion = conclusion, reporter = reporter)
             var ok = F
