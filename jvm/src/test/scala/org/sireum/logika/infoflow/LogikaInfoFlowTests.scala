@@ -61,9 +61,9 @@ class LogikaInfoFlowTests extends SireumRcSpec {
     }
 
     c = c(logPc = logPc, logRawPc = logRawPc, logVc = logVc, logVcDirOpt = logVcDirOpt)
-
-    Logika.checkScript(Some(f.string), content, c, th => Smt2Impl.create(c, ISZ(), th, reporter),
-      logika.NoTransitionSmt2Cache.create, reporter, T, Logika.defaultPlugins ++
+    val nameExePathMap = Smt2Invoke.nameExePathMap(sireumHome)
+    Logika.checkScript(Some(f.string), content, c, nameExePathMap, Os.numOfProcessors, th => Smt2Impl.create(c, ISZ(),
+      th, reporter), logika.NoTransitionSmt2Cache.create, reporter, T, Logika.defaultPlugins ++
         InfoFlowPlugins.defaultPlugins, 0, ISZ(), ISZ())
     reporter.printMessages()
     val name = f.name.value
