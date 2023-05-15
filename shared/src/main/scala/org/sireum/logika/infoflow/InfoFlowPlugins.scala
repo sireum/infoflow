@@ -42,7 +42,9 @@ object InfoFlowPlugins {
     }
   }
 
-  @pure def handle(th: TypeHierarchy,
+  @pure def handle(nameExePathMap: HashMap[String, String],
+                   maxCores: Z,
+                   th: TypeHierarchy,
                    plugins: ISZ[Plugin],
                    method: AST.Stmt.Method,
                    caseIndex: Z,
@@ -72,11 +74,10 @@ object InfoFlowPlugins {
             case _ => halt("Infeasible")
           }
         }
-        val p = Util.updateInVarMaps(Util.logikaMethod(th, mconfig, method.isHelper, res.owner, method.sig.id.value,
-          receiverTypeOpt, method.sig.paramIdTypes, method.sig.returnType.typedOpt.get, methodPosOpt, reads, requires,
-          modifies, ensures,
-          if (labelOpt.isEmpty) ISZ() else ISZ(labelOpt.get), plugins, None(), ISZ()), method.isHelper, smt2, cache,
-          state, reporter)
+        val p = Util.updateInVarMaps(Util.logikaMethod(nameExePathMap, maxCores, th, mconfig, method.isHelper,
+          res.owner, method.sig.id.value, receiverTypeOpt, method.sig.paramIdTypes, method.sig.returnType.typedOpt.get,
+          methodPosOpt, reads, requires, modifies, ensures, if (labelOpt.isEmpty) ISZ() else ISZ(labelOpt.get), plugins,
+          None(), ISZ()), method.isHelper, smt2, cache, state, reporter)
         state = p._2
         p._1
       }
@@ -118,10 +119,10 @@ object InfoFlowPlugins {
       logika = InfoFlowContext.putInAgreements(stateSyms._2, logika)
 
       val stmts = method.bodyOpt.get.stmts
-      val ss: ISZ[State] = if (method.purity == AST.Purity.StrictPure) {
+      val (l, ss): (Logika, ISZ[State]) = if (method.purity == AST.Purity.StrictPure) {
         halt("Infeasible since contracts cannot be attached to strict pure methods")
       } else {
-        logika.evalStmts(Split.Default, smt2, cache, None(), T, state, stmts, reporter)
+        Util.evalStmtsLogika(logika, Split.Default, smt2, cache, None(), T, state, stmts, reporter)
       }
 
       val augInAgrees = InfoFlowContext.getInAgreements(logika).get
@@ -134,7 +135,7 @@ object InfoFlowPlugins {
       // if method has a return statement then logika will have already called checkMethodPost.
       // The state.status will either be End or Error (ie. not Normal/'ok') so calling checkMethodPost
       // again will do nothing
-      val ssPost: ISZ[State] = Util.checkMethodPost(logika, smt2, cache, reporter, ss2, methodPosOpt, invs, ensures, mconfig.logPc, mconfig.logRawPc,
+      val ssPost: ISZ[State] = Util.checkMethodPost(l, smt2, cache, reporter, ss2, methodPosOpt, invs, ensures, mconfig.logPc, mconfig.logRawPc,
         if (stmts.nonEmpty) stmts(stmts.size - 1).posOpt else None())
     }
 
@@ -409,15 +410,14 @@ object InfoFlowLoopStmtPlugin {
                     val (s4, cond) = logika.value2Sym(s3, v, pos)
                     val prop = State.Claim.Prop(T, cond)
                     val thenClaims = s4.claims :+ prop
-                    val thenSat = smt2.sat(logika.context.methodName, logika.config, cache, T, logika.config.logVc,
-                      logika.config.logVcDirOpt, s"while-true-branch at [${pos.beginLine}, ${pos.beginColumn}]", pos,
-                      thenClaims, reporter)
+                    val thenSat = smt2.sat(logika.context.methodName, logika.config, cache, T,
+                      s"while-true-branch at [${pos.beginLine}, ${pos.beginColumn}]", pos, thenClaims, reporter)
                     var nextFresh: Z = s4.nextFresh
 
                     if (thenSat) {
                       // can satisfy the true branch of the loop condition,
                       // so now evaluate the loop loop body
-                      for (s5 <- logika.evalStmts(split, smt2, cache, None(), rtCheck, s4(claims = thenClaims), whileStmt.body.stmts, reporter)) {
+                      for (s5 <- Util.evalStmts(logika, split, smt2, cache, None(), rtCheck, s4(claims = thenClaims), whileStmt.body.stmts, reporter)) {
                         if (s5.ok) {
 
                           val postLoopStates = logika.checkExps(split, smt2, cache, F, "Loop invariant", " at the end of while-loop",
@@ -447,9 +447,8 @@ object InfoFlowLoopStmtPlugin {
 
                     val elseClaims = _elseClaims
 
-                    val elseSat = smt2.sat(logika.context.methodName, logika.config, cache, T, logika.config.logVc,
-                      logika.config.logVcDirOpt, s"while-false-branch at [${pos.beginLine}, ${pos.beginColumn}]", pos,
-                      elseClaims, reporter)
+                    val elseSat = smt2.sat(logika.context.methodName, logika.config, cache, T,
+                      s"while-false-branch at [${pos.beginLine}, ${pos.beginColumn}]", pos, elseClaims, reporter)
 
                     var state = State(status = State.statusOf(elseSat), claims = elseClaims, nextFresh = nextFresh)
 

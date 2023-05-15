@@ -258,8 +258,7 @@ object InfoFlowUtil {
             }
 
             val validity = smt2.valid(context = logika.context.methodName, config = logika.config, cache = cache,
-              reportQuery = T, log = logika.config.logVc, logDirOpt = logika.config.logVcDirOpt,
-              title = s"${title}$kind $channel at [${pos.beginLine}, ${pos.endLine}]", pos = pos,
+              reportQuery = T, title = s"${title}$kind $channel at [${pos.beginLine}, ${pos.endLine}]", pos = pos,
               premises = s.claims, conclusion = conclusion, reporter = reporter)
             var ok = F
             validity.kind match {

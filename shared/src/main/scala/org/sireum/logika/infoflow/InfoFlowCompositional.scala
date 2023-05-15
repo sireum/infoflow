@@ -82,9 +82,10 @@ object InfoFlowCompositional {
     }
 
     val lComp: Logika = {
-      val l = Util.logikaMethod(logika.th, logika.config, info.isHelper, res.owner, res.id,
-        receiverOpt.map(t => t.tipe), info.sig.paramIdTypes, info.sig.returnType.typedOpt.get, receiverPosOpt,
-        contract.reads, ISZ(), contract.modifies, ISZ(), ISZ(), logika.plugins, Some(
+      val l = Util.logikaMethod(logika.context.nameExePathMap, logika.context.maxCores, logika.th, logika.config,
+        info.isHelper, res.owner, res.id, receiverOpt.map(t => t.tipe), info.sig.paramIdTypes,
+        info.sig.returnType.typedOpt.get, receiverPosOpt, contract.reads, ISZ(), contract.modifies, ISZ(), ISZ(),
+        logika.plugins, Some(
           (s"(${if (res.owner.isEmpty) "" else res.owner(res.owner.size - 1)}${if (res.isInObject) '.' else '#'}${res.id}) ",
             info.sig.id.attr.posOpt.get)),
         logika.context.compMethods :+ (res.owner :+ res.id)
