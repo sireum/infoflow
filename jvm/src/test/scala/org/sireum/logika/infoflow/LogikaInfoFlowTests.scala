@@ -48,7 +48,7 @@ class LogikaInfoFlowTests extends SireumRcSpec {
     Smt2Invoke.haltOnError = T
     val isSimplified = path.last.endsWith(simplifiedPrefix)
     val p = if (isSimplified) path.dropRight(1) :+ path.last.replace(simplifiedPrefix, "") else path
-    val reporter = logika.ReporterImpl.create(config.logPc, config.logRawPc, config.logVc)
+    val reporter = logika.ReporterImpl.create(config.logPc, config.logRawPc, config.logVc, config.detailedInfo)
     var c = config(simplifiedQuery = isSimplified)
     val f = Os.path(p.mkString(Os.fileSep.value))
 
