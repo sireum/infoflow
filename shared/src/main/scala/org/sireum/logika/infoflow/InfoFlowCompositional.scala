@@ -228,7 +228,7 @@ object InfoFlowCompositional {
               assert(p._1.claims(size - 1) == State.Claim.Prop(T, p._2))
               (p._1(claims = ops.ISZOps(p._1.claims).slice(0, size - 1)), p._2)
             } else {
-              logikaComp.evalAssert(smt2, cache, F, title, csr0, AST.Util.substExp(require, typeSubstMap), posOpt, rep)
+              logikaComp.evalAssert(smt2, cache, F, title, csr0, AST.Util.substExp(require, typeSubstMap), posOpt, ISZ(), rep)
             }
           requireSyms = requireSyms :+ sym
           csr0 = csr1
