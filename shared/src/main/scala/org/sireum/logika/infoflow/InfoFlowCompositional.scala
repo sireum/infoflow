@@ -116,7 +116,7 @@ object InfoFlowCompositional {
       }
       var localInMap = mctx.localInMap
       for (p <- mctx.localMap(typeSubstMap).entries) {
-        val (id, (ctx, _, t)) = p
+        val (id, (_, ctx, _, t)) = p
         val (s7, sym): (State, State.Value.Sym) = Util.idIntro(pos, s1, ctx, id, t, None())
         localInMap = localInMap + id ~> sym
         s1 = s7
