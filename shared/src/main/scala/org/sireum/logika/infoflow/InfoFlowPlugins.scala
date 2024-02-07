@@ -121,7 +121,7 @@ object InfoFlowPlugins {
       logika = InfoFlowContext.putInAgreements(stateSyms._2, logika)
 
       val stmts = method.bodyOpt.get.stmts
-      val (l, ss): (Logika, ISZ[State]) = if (method.purity == AST.Purity.StrictPure) {
+      val (l, ss): (Logika, ISZ[State]) = if (method.isStrictPure) {
         halt("Infeasible since contracts cannot be attached to strict pure methods")
       } else {
         Util.evalStmtsLogika(logika, Split.Default, smt2, cache, None(), T, state, stmts, reporter)
