@@ -393,7 +393,7 @@ object InfoFlowLoopStmtPlugin {
                   }
                   if (receiverModified) {
                     val srw6 = Util.evalAssignReceiver(whileStmt.contract.modifies, logika, logika, smt2, cache, rtCheck, srw,
-                      Some(AST.Exp.This(AST.TypedAttr(whileStmt.posOpt, Some(receiverOpt.get.tipe)))), receiverOpt,
+                      Some(AST.Exp.This(logika.context.methodName, AST.TypedAttr(whileStmt.posOpt, Some(receiverOpt.get.tipe)))), receiverOpt,
                       HashMap.empty, reporter)
                     val (srw7, sym) = Util.idIntro(whileStmt.posOpt.get, srw6, logika.context.methodName, "this",
                       logika.context.receiverLocalTypeOpt.get._2, None())
