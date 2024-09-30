@@ -3,7 +3,7 @@ package org.sireum.logika.infoflow
 import org.sireum._
 import org.sireum.test._
 import org.sireum.logika.LogikaTest._
-import org.sireum.logika.{Logika, Smt2, Smt2Impl, Smt2Invoke}
+import org.sireum.logika.{Logika, LogikaTest, Smt2, Smt2Impl, Smt2Invoke}
 
 
 object LogikaInfoFlowTests {
@@ -64,7 +64,7 @@ class LogikaInfoFlowTests extends SireumRcSpec {
     val nameExePathMap = Smt2Invoke.nameExePathMap(sireumHome)
     Logika.checkScript(Some(f.string), content, c, nameExePathMap, Os.numOfProcessors, th => Smt2Impl.create(c, ISZ(),
       th, reporter), logika.NoTransitionSmt2Cache.create, reporter, T, Logika.defaultPlugins ++
-        InfoFlowPlugins.defaultPlugins, 0, ISZ(), ISZ())
+        InfoFlowPlugins.defaultPlugins, _ => (LogikaTest.tc.typeHierarchy, LogikaTest.rep), 0, ISZ(), ISZ())
     reporter.printMessages()
     val name = f.name.value
     if (name.contains(failSuffix)) {
