@@ -33,7 +33,7 @@ class LogikaInfoFlowTests extends SireumRcSpec {
         }
       case _ =>
     }
-    val m = $internal.RC.text(Vector("example")) { (p, f) => !p.last.endsWith("while-loop--FAIL.sc") }
+    val m = $internal.RC.text(Vector("example")) { (p, f) => p.last.endsWith(".sc") }
     implicit val ordering: Ordering[Vector[Predef.String]] = m.ordering
     for ((k, v) <- m if !shouldIgnore(k.last);
          pair <- Seq((k, v), (k.dropRight(1) :+ s"${k.last}$simplifiedPrefix", v))) yield pair
