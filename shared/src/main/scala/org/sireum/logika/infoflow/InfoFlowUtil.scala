@@ -155,9 +155,9 @@ object InfoFlowUtil {
             // introduce sym value for the outAgrees
             var outSyms: ISZ[State.Value.Sym] = ISZ()
             for (outExp <- outAgrees) {
-              val (s1, r) = intro(outExp, s, logika, smt2, cache, reporter)
+              val (s1, r2) = intro(outExp, s, logika, smt2, cache, reporter)
               s = s1
-              outSyms = outSyms :+ r
+              outSyms = outSyms :+ r2
             }
 
             val lastSymNum = s.nextFresh - 1

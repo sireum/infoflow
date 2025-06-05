@@ -106,8 +106,8 @@ object InfoFlowCompositional {
             val (s5, thiz) = Util.idIntro(mctx.posOpt.get, s1, mctx.name, "this", receiverType, mctx.posOpt)
             s1 = s5
             for (p <- mctx.fieldVarMap(typeSubstMap).entries) {
-              val (id, (t, posOpt)) = p
-              val (s6, sym) = s1.freshSym(t, posOpt.get)
+              val (id, (t, posOpt2)) = p
+              val (s6, sym) = s1.freshSym(t, posOpt2.get)
               s1 = s6.addClaim(State.Claim.Let.FieldLookup(sym, thiz, id))
               fieldVarInMap = fieldVarInMap + id ~> sym
             }
@@ -116,8 +116,8 @@ object InfoFlowCompositional {
       }
       var localInMap = mctx.localInMap
       for (p <- mctx.localMap(typeSubstMap).entries) {
-        val (id, (_, _, ctx, _, t)) = p
-        val (s7, sym): (State, State.Value.Sym) = Util.idIntro(pos, s1, ctx, id, t, None())
+        val (id, (_, _, lctx, _, t)) = p
+        val (s7, sym): (State, State.Value.Sym) = Util.idIntro(pos, s1, lctx, id, t, None())
         localInMap = localInMap + id ~> sym
         s1 = s7
       }
@@ -138,21 +138,21 @@ object InfoFlowCompositional {
         ms1 = Util.rewriteObjectVars(logikaComp, smt2, cache, rtCheck, ms1, modObjectVars, mpos, reporter)
         var oldIdMap = HashMap.empty[ISZ[String], State.Value.Sym]
         for (pair <- modLocals.entries) {
-          val (info, (t, _)) = pair
-          val (ls0, sym) = Util.idIntro(pos, ms1, info.context, info.id, t, None())
+          val (linfo, (t, _)) = pair
+          val (ls0, sym) = Util.idIntro(pos, ms1, linfo.context, linfo.id, t, None())
           ms1 = ls0
-          oldIdMap = oldIdMap + (info.context :+ info.id) ~> sym
+          oldIdMap = oldIdMap + (linfo.context :+ linfo.id) ~> sym
         }
         ms1 = Util.rewriteLocalVars(logikaComp, ms1, T, modLocals.keys, mposOpt, reporter)
         for (pair <- modLocals.entries) {
-          val (info, (t, pos)) = pair
-          val oldSym = oldIdMap.get(info.context :+ info.id).get
-          val (ls1, newSym) = Util.idIntro(pos, ms1, info.context, info.id, t, Some(pos))
-          val ls2 = Util.assumeValueInv(logika, smt2, cache, rtCheck, ls1, newSym, pos, reporter)
+          val (linfo, (t, lpos)) = pair
+          val oldSym = oldIdMap.get(linfo.context :+ linfo.id).get
+          val (ls1, newSym) = Util.idIntro(lpos, ms1, linfo.context, linfo.id, t, Some(lpos))
+          val ls2 = Util.assumeValueInv(logika, smt2, cache, rtCheck, ls1, newSym, lpos, reporter)
           if (AST.Util.isSeq(t)) {
-            val (ls5, size1) = ls2.freshSym(AST.Typed.z, pos)
-            val (ls6, size2) = ls5.freshSym(AST.Typed.z, pos)
-            val (ls7, cond) = ls6.freshSym(AST.Typed.b, pos)
+            val (ls5, size1) = ls2.freshSym(AST.Typed.z, lpos)
+            val (ls6, size2) = ls5.freshSym(AST.Typed.z, lpos)
+            val (ls7, cond) = ls6.freshSym(AST.Typed.b, lpos)
             val ls8 = ls7.addClaims(ISZ[State.Claim](
               State.Claim.Let.FieldLookup(size1, oldSym, "size"),
               State.Claim.Let.FieldLookup(size2, newSym, "size"),
@@ -318,8 +318,8 @@ object InfoFlowCompositional {
             if (isUnit) {
               (cs7, Some(rcv))
             } else {
-              val (cs8, res) = Util.resIntro(pos, cs7, ctx, retType, None())
-              val cs9 = Util.assumeValueInv(logikaComp, smt2, cache, rtCheck, cs8, res, pos, reporter)
+              val (cs8, res2) = Util.resIntro(pos, cs7, ctx, retType, None())
+              val cs9 = Util.assumeValueInv(logikaComp, smt2, cache, rtCheck, cs8, res2, pos, reporter)
               (cs9, Some(rcv))
             }
           case _ => (cs5, receiverOpt)
