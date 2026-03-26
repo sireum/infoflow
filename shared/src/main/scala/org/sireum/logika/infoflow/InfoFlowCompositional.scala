@@ -188,10 +188,10 @@ object InfoFlowCompositional {
         }
         var rwLocals: ISZ[AST.ResolvedInfo.LocalVar] = for (q <- paramArgs) yield q._1
         if (!isUnit) {
-          rwLocals = rwLocals :+ AST.ResolvedInfo.LocalVar(ctx, AST.ResolvedInfo.LocalVar.Scope.Current, T, T, "Res")
+          rwLocals = rwLocals :+ AST.ResolvedInfo.LocalVar(ctx, AST.ResolvedInfo.LocalVar.Scope.Current, T, T, "Res", None())
         }
         if (receiverOpt.nonEmpty) {
-          rwLocals = rwLocals :+ AST.ResolvedInfo.LocalVar(ctx, AST.ResolvedInfo.LocalVar.Scope.Current, F, T, "this")
+          rwLocals = rwLocals :+ AST.ResolvedInfo.LocalVar(ctx, AST.ResolvedInfo.LocalVar.Scope.Current, F, T, "this", None())
         }
         ms1 = Util.rewriteLocalVars(logikaComp, ms1, F, rwLocals, modPosOpt, reporter)
         if (newVars.nonEmpty) {
